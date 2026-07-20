@@ -62,6 +62,12 @@ def init_db():
         FOREIGN KEY (ticketID) REFERENCES tickets (id)
     )
     """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS catagories (
+        name TEXT PRIMARY KEY,
+        description TEXT NOT NULL,
+        priority TEXT NOT NULL
+    )""")
     conn.commit()
     conn.close()
 
@@ -282,6 +288,78 @@ def GetUser(user):
         conn.close()
         raise HTTPException(status_code=404, detail=f"User '{user}' does not exist. Cannot create ticket.")
     return row
+
+@app.post("/categories/create", status_code=201)
+def CreateCategory(category: CATEGORY, username: str):
+    row = GetUser(username)
+    if row[0] !="Admin":
+        raise HTTPException(status_code=401, detail="ONLY Admins are allowed to manage categories.")
+    conn, cursor = ConnectDB()
+    cursor.execute(
+        "INSERT INTO categories (name, description, priority) VALUES (?, ?, ?)", 
+        (category.name, category.description, category.priority))
+    if row[0] !="Admin":
+        conn.close()
+        raise HTTPException(status_code=400, detail= "Category name already exists.")
+    conn.commit()
+    conn.close()
+    Log(f"Admin {username} created category: {category.name}")
+    return {"detail": f"Category '{category.name}' created."}
+
+@app.get("/categories", response_model=list[CATEGORY])
+def ReadCategories(username: str):
+    row = GetUser(username)
+    if row[0] != "Admin":
+        raise HTTPException(status_code=401, detail="ONLY Admins are allowed to manage categories.")
+    conn, cursor = ConnectDB()
+    cursor.execute("SELECT name, description, priority FROM categories")
+    rows = cursor.fetchall()
+    conn.close()
+
+    categories = [CATEGORY(name=r[0], description=r[1], priority=r[2]) for r in rows]
+    Log(f"Admin {username} viewed all categories.")
+    return categories
+
+@app.post("/categories/update")
+def UpdateCategory(category: CATEGORY, username: str):
+    row = GetUser(username)
+    if row[0] != "Admin":
+        raise HTTPException(status_code=401, detail="ONLY Admins are allowed to manage categories.")
+    
+    conn, cursor = ConnectDB()
+    cursor.execute("SELECT name FROM categories WHERE name = ?", (category.name))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Category does not exist.")
+    
+    cursor.execute(
+        "UPDATE categories SET description = ?, priority = ? WHERE name = ?"
+        (category.description, category.priority, category.name)
+)
+    conn.commit()
+    conn.close()
+    Log(f"Admin {username} updated the category: {category.name}")
+    return{"detail": f"category '{category.name}' updated."}
+
+@app.delete("/categories/delete")
+def DeleteCategory(name: str, username: str):
+    row = GetUser(username)
+    if row[0] != "Admin":
+        raise HTTPException(status_code=401, detail="ONLY Admins are allowed to manage categories.")
+    conn, cursor = ConnectDB()
+    cursor.execute("SELECT name FROM categories WHERE name = ?" (name))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Category does not exist.")
+    
+    cursor.execute("DELETE FROM categories WHERE name = ?" (name))
+    conn.commit()
+    conn.close()
+    Log(f"Admin {username} deleted category; {name}")
+    return {"detail": f"Category '{name}' deleted."}
+
+
+
 
 # Thought of a session idea, Problem anyone sending a API Req can write a Admin...
 # Username, so instead we can give a session id that gets sended and the id... (hash)
