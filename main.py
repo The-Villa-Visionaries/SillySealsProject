@@ -20,7 +20,13 @@ class TICKET(BaseModel):
     status:str = None # Assigned Based on System [OPTIONAL]
     assigned:Optional[str] = None # Assigned Based on System
     isDeleted:Optional[bool] = False
-  
+
+class COMMENT(BaseModel):
+    id:Optional[int] = None
+    ticketID:int
+    user:str
+    text:str
+
 class CATEGORY(BaseModel):
     name:str
     desc:str
@@ -47,6 +53,15 @@ def init_db():
         assigned TEXT,
         deleted INTEGER DEFAULT 0
     )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticketID INTEGER NOT NULL,
+        user TEXT NOT NULL,
+        text TEXT NOT NULL,
+        FOREIGN KEY (ticketID) REFERENCES tickets (id)
+    )
+    """)
     conn.commit()
     conn.close()
 
@@ -180,7 +195,49 @@ def UpdateTicket(ticket: TICKET, id:int, username:str):
     conn.close()
     Log(f"{username} ({row[0]}) updated ticket [{id}]")
     return {"detail": f"Ticket #{id} updated successfully by {username}."}
-    
+
+@app.get("/ticket-{id}/comment")
+def GetComments(id:int, username:str):
+    conn, cursor = ConnectDB()
+    row = GetUser(username)
+    cursor.execute("SELECT user FROM tickets WHERE id = ? AND deleted = 0", (id,))
+    ticketRow = cursor.fetchone()
+    if not ticketRow:
+        conn.close()
+        Log(f'{username} ({row[0]}): Tried to view comments on missing Ticket [{id}]')
+        raise HTTPException(status_code=404, detail="Ticket Not Found!")
+    if row[0] == "User" and username != ticketRow[0]:
+        conn.close()
+        Log(f'{username} ({row[0]}): Unauthorized comments view on Ticket [{id}] owned by {ticketRow[0]}!')
+        raise HTTPException(status_code=401, detail="You do not own this ticket!")
+    cursor.execute("SELECT id, ticketID, user, text FROM comments WHERE ticketID = ?", (id,))
+    commentRow = cursor.fetchall()
+    conn.close()
+    comments = [COMMENT(id=r[0], ticketID=r[1], user=r[2], text=r[3]) for r in commentRow]
+    Log(f'{username} ({row[0]}) viewed comments on Ticket [{id}]')
+    return comments    
+
+@app.post("/ticket-{id}/comment/create", status_code=201)
+def CreateComment(comment: COMMENT, id:int, username:str):
+    conn, cursor = ConnectDB()
+    row = GetUser(username)
+    cursor.execute("SELECT user, deleted FROM tickets WHERE id = ?", (id,))
+    ticketRow = cursor.fetchone()
+    if not ticketRow or bool(ticketRow[1]):
+        conn.close()
+        Log(f'{username} ({row[0]}): Tried to comment on missing/deleted Ticket [{id}]') #[cite: 2]
+        raise HTTPException(status_code=404, detail="Ticket Not Found!")
+    if row[0] == "User" and username != ticketRow[0]:
+        conn.close()
+        Log(f'{username} ({row[0]}): Unauthorized comment attempt on Ticket [{id}] owned by {ticketRow[0]}!') #[cite: 2]
+        raise HTTPException(status_code=401, detail="You do not own this ticket!")
+    cursor.execute("""INSERT INTO comments (ticketID, user, text) VALUES (?, ?, ?)""", (id, username, comment.text))
+    conn.commit()
+    commentID = cursor.lastrowid
+    conn.close()
+    Log(f'{username} ({row[0]}) added comment [{commentID}] to Ticket [{id}]')
+    return {"detail": f"Comment successfully added to Ticket #{id}."}
+
 @app.post("/coffee")
 def Coffee():
     # I HAD TO!
