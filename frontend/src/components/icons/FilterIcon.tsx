@@ -1,0 +1,15 @@
+interface IconProps {
+    className?: string
+}
+
+export default function FilterIcon({className = "w-10 h-10"}: IconProps) {
+    return (
+        <svg 
+            viewBox="0 0 27 29" 
+            fill="none"
+            className={className}
+        >
+            <path d="M23.7478 1.5H3.26961C1.76805 1.5 0.957981 3.22789 1.93518 4.34634L9.57049 13.0853C9.84353 13.3979 9.99361 13.7958 9.99361 14.2074V22.8494C9.99361 23.5024 10.3697 24.0995 10.9652 24.3916L14.4803 26.1158C15.6489 26.6889 17.0238 25.8553 17.0238 24.5736V14.2074C17.0238 13.7958 17.1739 13.3979 17.4468 13.0853L25.0822 4.34634C26.0594 3.22789 25.2493 1.5 23.7478 1.5Z" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    )
+}
