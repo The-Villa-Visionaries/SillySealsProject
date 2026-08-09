@@ -1,5 +1,14 @@
-*.venv/
+# Frontend
+**/node_modules/
+**/dist/
+.DS_Store
 
-__pycache__/
+# Backend
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
 
-main.db
+# Database
+*.db
+*.sqlite3
