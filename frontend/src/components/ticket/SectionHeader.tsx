@@ -14,7 +14,7 @@ export default function SectionHeader({status}: SectionHeaderProps) {
     }
 
     return (
-        <div className="flex items-center gap-2.5 mb-2 mt-2 w-full max-w-[80vw]">
+        <div className="flex items-center gap-2.5 mb-2 mt-2 w-[80vw]">
             <span className={`w-[23px] h-[23px] rounded-full border-[3px] border-[#14452F] flex-shrink-0 ${
                 dotColors[status] || 'bg-[#858585]'
             }`}/>

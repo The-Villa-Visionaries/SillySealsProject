@@ -4,13 +4,13 @@ interface StatusDotProps {
 
 export default function StatusDot({status}: StatusDotProps) {
     const colors: Record<string, string> = {
-        'Open': 'bg-[#008CFF]',
-        'In-Progress': 'bg-[#FFA100]',
-        'Resolved': 'bg-[#26FF00]',
-        'Closed': 'bg-[#858585]',
+        'open': 'bg-[#008CFF]',
+        'in-progress': 'bg-[#FFA100]',
+        'resolved': 'bg-[#26FF00]',
+        'closed': 'bg-[#858585]',
 
-        'Active': 'bg-[#008CFF]',
-        'In-Active': 'bg-[#858585]',
+        'active': 'bg-[#008CFF]',
+        'in-active': 'bg-[#858585]',
     }
     return (
         <span className = {

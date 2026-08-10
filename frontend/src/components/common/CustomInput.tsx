@@ -8,7 +8,7 @@ interface CustomInputProps {
 
 export default function CustomInput({label, value, onChange, placeholder, rows}: CustomInputProps) {
     return (
-        <div className="relative my-4">
+        <div className="relative my-4 w-[70vw]">
             <label className="absolute -top-[14px] left-[20px] z-10 bg-white px-1 font-black italic text-[20px] leading-[24px] text-[#0A5C36] border-[3px] border-white flex items-center select-none">
                 {label}
             </label>

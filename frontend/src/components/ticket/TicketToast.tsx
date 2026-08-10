@@ -7,7 +7,7 @@ interface TicketToastProps {
     duration?: number
 }
 
-export default function TicketToast({type, ticket, onClose, duration=5000}: TicketToastProps) {
+export default function TicketToast({type, ticket, onClose, duration=3000}: TicketToastProps) {
     const isDeleted = type === 'deleted'
 
     useEffect(() => {
