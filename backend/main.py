@@ -1,11 +1,14 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Literal, List
-import sqlite3, hashlib
+import sqlite3, hashlib, os
+from pathlib import Path
 
 app = FastAPI()
 database = "main.db"
+staticFiles = "static/icons"
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,6 +16,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+app.mount(
+    "/static", 
+    StaticFiles(
+        directory="static"), 
+    name="static"
 )
 
 class TICKET(BaseModel):
@@ -30,13 +39,15 @@ def ConnectDB():
     conn.row_factory = sqlite3.Row
     return conn
 
-def AuthCheck(data):
+def AuthCheck(data, validation=[]):
     with ConnectDB() as conn:
         cursor = conn.cursor()
         cursor.execute('SELECT id, role FROM users WHERE id = ?', (data.requestId,))
         user = cursor.fetchone()
         if not user:
             raise HTTPException(status_code=401, detail="UnAuthorized!")
+        elif not user['role'] in validation:
+            raise HTTPException(status_code=403, detail="The server has refused your requested.")
         return user
 
 def initDB():
@@ -47,7 +58,7 @@ def initDB():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL,
             role TEXT NOT NULL
-        )""")
+        )""") # Password???
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS tickets (
             ticketId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,8 +72,38 @@ def initDB():
             FOREIGN KEY (userId) REFERENCES users(id),
             FOREIGN KEY (staffId) REFERENCES users(id)
         )""")
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS category (
+            name TEXT PRIMARY KEY,
+            color TEXT NOT NULL
+        )""")
         conn.commit()
 initDB()
+
+class SearchALL(BaseModel):
+    requestId:int
+    query:str
+    mode:str | None = None
+@app.post("/api/search", status_code=200)
+def SearchAll(data:SearchALL):
+    user = AuthCheck(data)
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        if data.mode == 'category' and user['role'] == 'admin':
+            cursor.execute('''
+                SELECT name, color
+                FROM category
+                WHERE name LIKE ?
+            ''', (f'%{data.query}%',))
+            output = cursor.fetchall()
+        else:
+            cursor.execute(f'''
+                SELECT ticketId, title
+                FROM tickets
+                WHERE title LIKE ?{' AND deleted = 0' if not user['role'] == 'admin' else ''}
+            ''', (f'%{data.query}%',))
+            output = cursor.fetchall()
+        return dict(output)
 
 class FetchOneTICKET(BaseModel):
     ticketId:int
@@ -105,6 +146,7 @@ def DeleteTicket(data: FetchOneTICKET):
             SET deleted = 1
             WHERE ticketId = ?
         ''', (data.ticketId,))
+    return {"status": "success", "message": f"Deleted Ticket-{data.ticketId}"}
 
 class UpdateTICKETS(BaseModel):
     ticketId: int
@@ -149,7 +191,7 @@ def UpdateTicket(data: UpdateTICKETS):
                 SET status = ?, deleted = ?
                 WHERE ticketId = ?
             ''', (data.status, deleted  , data.ticketId))
-    return
+    return {"status": "success", "message": f"Ticket-{data.ticketId} updated"}
         
 class FetchAllTICKETS(BaseModel):
     requestId:int
@@ -182,39 +224,101 @@ class MakeTICKET(BaseModel):
     category:Literal["help", "clean", "maintenance"]
 @app.post("/api/ticket/create", status_code=201)
 def CreateTicket(data: MakeTICKET):
-    AuthCheck(data)
+    AuthCheck(data, ['admin'])
     with ConnectDB() as conn:
         cursor = conn.cursor()
-
         cursor.execute('''
             INSERT INTO tickets (userId, staffId, title, description, status, category, deleted)
             VALUES (?, NULL, ?, ?, 'open', ?, 0)''', (data.requestId, data.title, data.description, data.category))
         conn.commit()
+    return {"status": "success", "message": f"Ticket '{data.title}' Made"}
 
-        x = cursor.lastrowid
-
-        cursor.execute('''
-            SELECT ticketId, userId, staffId, title, description, status, category
-            FROM tickets WHERE ticketId = ?''', (x,))
-
-        x = dict(cursor.fetchone())
-        if not x:
-            raise HTTPException(status_code=404, detail="Ticket Creation Failed!")
-    return x
-
-class SearchTICKET(BaseModel):
+class FetchOneCATEGORY(BaseModel):
     requestId:int
-    query:str
-    mode:str | None = None
-@app.post("/api/search/ticket", status_code=200)
-def SearchTicket(data:SearchTICKET):
-    user = AuthCheck(data)
+    name:str
+@app.post("/api/category/view", status_code=200)
+def GetCategory(data: FetchOneCATEGORY):
+    AuthCheck(data, ['admin'])
     with ConnectDB() as conn:
         cursor = conn.cursor()
-        cursor.execute(f'''
-            SELECT ticketId, title
-            FROM tickets
-            WHERE title LIKE ?{' AND deleted = 0' if not user['role'] == 'admin' else ''}
-        ''', (f'%{data.query}%',))
-        tickets = cursor.fetchall()
-    return dict(tickets)
+        cursor.execute('''
+            SELECT name, color
+            FROM category
+            WHERE name = ?
+        ''', (data.name,))
+    category = cursor.fetchone()
+    return dict(category)
+
+@app.post("/api/category/delete", status_code=200)
+def DeleteCategory(data: FetchOneCATEGORY):
+    AuthCheck(data, ['admin'])
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM category
+            WHERE name = ?
+        ''', (data.name,))
+        deleteSVG = Path("static/icons") / f"{data.name}.svg"
+        deleteSVG.unlink(missing_ok=True)
+    return {"status": "success", "message": f"Category '{data.name}' deleted."}
+
+class UpdateCATEGORY(BaseModel):
+    requestId:int
+    changeFrom:str
+    changeTo: str
+    color:str
+@app.post("/api/cetegory/update", status_code=200)
+def UpdateCategory(data: UpdateCATEGORY):
+    AuthCheck(data, ['admin'])
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE category
+            SET name = ?, color = ?
+            WHERE name = ?
+        ''', (data.changeTo, data.color, data.changeFrom))
+        dir = Path("static/icons")
+        old = dir / f"{data.changeFrom}.svg"
+        new = dir / f"{data.changeTo}.svg"
+        if old.exists():
+            old.rename(new)
+            conn.commit()
+    return {"status": "success", "message": "Category and icon updated"}
+
+class FetchAllCATEGORY(BaseModel):
+    requestId:int
+@app.post("/api/category", status_code=200)
+def AllCategory(data: FetchAllCATEGORY):
+    AuthCheck(data, ['admin'])
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT name, color
+            FROM category
+            ORDER BY name DESC
+        ''')
+        categories = cursor.fetchall()
+    return [dict(category) for category in categories]
+
+class MakeCATEGORY():
+    def __init__(self, requestId:int = Form(), name:str = Form(), color: str = Form(..., min_length=3, max_length=7), icon:UploadFile = File()):
+        self.requestId = requestId
+        self.name = name
+        self.color = color
+        self.icon = icon
+@app.post("/api/category/create", status_code=201)
+async def CreateCategory(data: MakeCATEGORY = Depends()):
+    AuthCheck(data, ['admin'])
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        if not str(data.icon.filename).endswith(".svg"):
+            raise HTTPException(status_code=400, detail="Only 'SVG' File types are allowed.")
+        filePath = os.path.join(staticFiles, f"{data.name}.svg")
+        with open(filePath, "wb") as f:
+            f.write(await data.icon.read())
+        cursor.execute('''
+            INSERT INTO category (name, color)
+            VALUES (?, ?)
+        ''', (data.name, data.color))
+        conn.commit()
+    return {"status": "success", "message": f"Category '{data.name}' Made"}
