@@ -67,41 +67,100 @@ initDB()
 class FetchOneTICKET(BaseModel):
     ticketId:int
     requestId:int
-@app.get("/api/ticket-{id}", status_code=200)
+@app.post("/api/ticket-{id}/view", status_code=200)
 def GetTicket(data: FetchOneTICKET):
     user = AuthCheck(data)
     with ConnectDB() as conn:
         cursor = conn.cursor()
-
-        cursor.execute('''
+        cursor.execute(f'''
             SELECT ticketId, userId, staffId, title, description, status, category 
-            FROM tickets WHERE ticketId = ? AND deleted = 0''', (data.ticketId,))
+            FROM tickets 
+            WHERE ticketId = ?{' AND deleted = 0' if not user['role'] == 'admin' else ''}''', (data.ticketId,))
         ticket = cursor.fetchone()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket Not Found!")
 
-    if not (ticket['userId'] == data.requestId or ticket['staffId'] == data.requestId or bool(user["role"] == 'admin')):
+    if not (ticket['userId'] == data.requestId or ticket['staffId'] == data.requestId or user["role"] == 'admin'):
         raise HTTPException(status_code=403, detail="Access denied!")
     return dict(ticket)
 
-@app.delete("/api/ticket-{id}/delete", status_code=200)
-def DeleteTicket(FetchOneTICKET):
-    pass
+@app.post("/api/ticket-{id}/delete", status_code=200)
+def DeleteTicket(data: FetchOneTICKET):
+    user = AuthCheck(data)
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT ticketId, userId
+            FROM tickets
+            WHERE ticketId = ? AND deleted = 0
+        ''', (data.ticketId,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            raise HTTPException(status_code=404, detail="Ticket not found!")
+        if not (ticket['userId'] == data.requestId or user['role'] == 'admin'):
+            print(ticket['userId'], user['role'])
+            raise HTTPException(status_code=403, detail="Access denied!")
+        cursor.execute('''
+            UPDATE tickets 
+            SET deleted = 1
+            WHERE ticketId = ?
+        ''', (data.ticketId,))
 
-@app.patch("/api/ticket-{id}/update", status_code=200)
-def UpdateTicket(FetchOneTICKET):
-    pass
-
+class UpdateTICKETS(BaseModel):
+    ticketId: int
+    requestId: int
+    title: str | None = Field(None, min_length=5, max_length=50)
+    description: str | None = Field(None, max_length=250)
+    category: Literal['help', 'clean', 'maintenance'] | None = None
+    status: str | None = None
+    staffId: int | None = None
+    deleted: bool | None = None
+@app.post("/api/ticket-{id}/update", status_code=200)
+def UpdateTicket(data: UpdateTICKETS):
+    user = AuthCheck(data)
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT ticketId, userId, staffId
+            FROM tickets
+            WHERE ticketId = ? AND deleted = 0
+        ''', (data.ticketId,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            raise HTTPException(status_code=404, detail="Ticket Not Found!")  
+        if not (ticket['userId'] == data.requestId or ticket['staffId'] == data.requestId or user["role"] == 'admin'):
+            raise HTTPException(status_code=403, detail="Access denied!")
+        if (ticket['userId'] == data.requestId or user["role"] == 'admin'):
+            cursor.execute('''
+                UPDATE tickets
+                SET title = ?, description = ?, category = ?
+                WHERE ticketId = ? AND deleted = 0
+            ''', (data.title, data.description, data.category, data.ticketId))
+        if ticket['staffId'] == data.requestId: 
+            cursor.execute('''
+                UPDATE tickets
+                SET status = ?, staffId = ?
+                WHERE ticketId = ? AND deleted = 0
+            ''', (data.status, data.requestId, data.ticketId))
+        if user['role'] == 'admin':
+            deleted = 1 if data.deleted else 0
+            cursor.execute('''
+                UPDATE tickets
+                SET status = ?, deleted = ?
+                WHERE ticketId = ?
+            ''', (data.status, deleted  , data.ticketId))
+    return
+        
 class FetchAllTICKETS(BaseModel):
     requestId:int
-@app.get("/api/tickets")
+@app.post("/api/tickets", status_code=200)
 def AllTickets(data: FetchAllTICKETS):
     user = AuthCheck(data)
     with ConnectDB() as conn:
         cursor = conn.cursor()
 
     if user['role'] == 'admin':
-        cursor.execute('''
+        cursor.execute(f'''
             SELECT ticketId, userId, staffId, title, description, status, category 
             FROM tickets 
             ORDER BY status ASC, ticketId DESC
@@ -143,3 +202,19 @@ def CreateTicket(data: MakeTICKET):
             raise HTTPException(status_code=404, detail="Ticket Creation Failed!")
     return x
 
+class SearchTICKET(BaseModel):
+    requestId:int
+    query:str
+    mode:str | None = None
+@app.post("/api/search/ticket", status_code=200)
+def SearchTicket(data:SearchTICKET):
+    user = AuthCheck(data)
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT ticketId, title
+            FROM tickets
+            WHERE title LIKE ?{' AND deleted = 0' if not user['role'] == 'admin' else ''}
+        ''', (f'%{data.query}%',))
+        tickets = cursor.fetchall()
+    return dict(tickets)
