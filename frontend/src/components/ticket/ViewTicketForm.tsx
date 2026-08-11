@@ -30,7 +30,7 @@ export default function ViewTicketForm({ ticketId, userId, onSuccess, onCancel }
         const fetchTicketDetails = async () => {
             setLoading(true);
             try {
-                const response = await fetch(`http://${hidden}:8000/api/ticket-${ticketId}`, {
+                const response = await fetch(`http://192.168.100.44:8000/api/ticket-${ticketId}/view`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ticketId, requestId: userId })
@@ -55,7 +55,7 @@ export default function ViewTicketForm({ ticketId, userId, onSuccess, onCancel }
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            const response = await fetch(`http://${hidden}:8000/api/tickets/update`, {
+            const response = await fetch(`http://192.168.100.44:8000/api/ticket-${ticketId}/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ticketId, requestId: userId, title, description, category })
@@ -63,7 +63,7 @@ export default function ViewTicketForm({ ticketId, userId, onSuccess, onCancel }
             if (!response.ok) throw new Error('Failed to update ticket');
             onSuccess('updated', title);
         } catch (err: any) {
-            console.error(err);
+            console.error("Update Error:", err);
         } finally {
             setIsSubmitting(false);
         }
@@ -72,15 +72,20 @@ export default function ViewTicketForm({ ticketId, userId, onSuccess, onCancel }
     const handleDelete = async () => {
         setIsSubmitting(true);
         try {
-            await fetch(`http://${hidden}:8000/api/tickets/delete`, {
+            const res = await fetch(`http://192.168.100.44:8000/api/ticket-${ticketId}/delete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ticketId, requestId: userId })
             });
-        } catch (err) {
-            console.error(err);
-        } finally {
+            
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.detail || 'Failed to delete ticket');
+            }
+
             onSuccess('deleted', title || 'Ticket');
+        } catch (err) {
+            console.error("Delete Error:", err);
         }
     };
 
@@ -119,7 +124,7 @@ export default function ViewTicketForm({ ticketId, userId, onSuccess, onCancel }
             <div className='flex flex-col w-full fixed bottom-0 -left-0 items-center justify-center z-15 bg-white pb-6'>
                 <div className='w-[80vw] mt-4 mb-8 items-center justify-center'>
                     <h3 className='text-[#14452F] font-black italic text-[20px] mb-2'>Preview</h3>
-                    <TicketCard isPreview title={title} description={description} category={category}/>
+                    <TicketCard isPreview title={title} description={description} category={category} status={status}/>
                 </div>
                 <div className="flex items-center justify-between w-[80vw] gap-4 z-30">
                     <button

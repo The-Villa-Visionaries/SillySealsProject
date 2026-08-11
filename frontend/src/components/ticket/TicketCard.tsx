@@ -45,7 +45,7 @@ export default function TicketCard({ticketId, requestId, onClick, isPreview=fals
             setLoading(true)
             setError(null)
             try {
-                const response = await fetch(`http://${hidden}:8000/api/ticket-${ticketId}`, {
+                const response = await fetch(`http://192.168.100.44:8000/api/ticket-${ticketId}/view`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({

@@ -30,12 +30,12 @@ export default function App() {
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    const currentUserId = 3; // Naush user ID
+    const currentUserId = 1; // Naush user ID
 
     const fetchTickets = useCallback(async () => {
         setIsLoading(true);
         try {
-            const response = await fetch(`http://${hidden}:8000/api/tickets`, {
+            const response = await fetch(`http://192.168.100.44:8000/api/tickets`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ requestId: currentUserId }),
@@ -56,6 +56,14 @@ export default function App() {
             fetchTickets();
         }
     }, [currentView, fetchTickets]);
+
+    const handleSearchResults = (matchedIds: number[] | null) => {
+        if (matchedIds === null) {
+            fetchTickets();
+        } else {
+            setTickets((prev) => prev.filter((ticket) => matchedIds.includes(ticket.ticketId)));
+        }
+    };
 
     const toggleFilter = () => {
         setIsFilterOpen((prev) => !prev);
@@ -80,7 +88,13 @@ export default function App() {
         <div className={`overflow-x-hidden min-h-screen bg-[#14452F] flex flex-col items-center relative ${
             currentView !== 'My Tickets' ? 'h-screen' : ''
         }`}>
-            <Header userName="Naush" avatarUrl={Confidential({ x: 1 })} showSearch={currentView === 'My Tickets'}/>
+            <Header 
+                userName={String(currentUserId)} 
+                avatarUrl={Confidential({ x: 1 })} 
+                showSearch={currentView === 'My Tickets'}
+                userId={currentUserId}
+                onSearchResults={handleSearchResults}
+            />
 
             <PageWrapper title={currentView}>
                 {currentView === 'Create Ticket' ? (

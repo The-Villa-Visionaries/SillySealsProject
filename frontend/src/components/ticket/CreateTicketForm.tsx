@@ -41,7 +41,7 @@ export default function CreateTicketForm({userId, onSuccess, onCancel}: CreateTi
         setError(null)
 
         try {
-            const response = await fetch(`http://${hidden}:8000/api/ticket/create`, {
+            const response = await fetch(`http://192.168.100.44:8000/api/ticket/create`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
