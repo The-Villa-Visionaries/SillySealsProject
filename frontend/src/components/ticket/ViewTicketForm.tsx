@@ -1,96 +1,95 @@
-import { useState, useEffect } from 'react';
-import CustomInput from '../common/CustomInput';
-import DropDown from '../common/DropDown';
-import TicketCard from './TicketCard';
+import { useState, useEffect } from 'react'
+import CustomInput from '../common/CustomInput'
+import DropDown from '../common/DropDown'
+import TicketCard from './TicketCard'
 
-type CategoryType = 'help' | 'clean' | 'maintenance';
-const categories: { label: string; value: CategoryType }[] = [
+type CategoryType = 'help' | 'clean' | 'maintenance'
+const categories: { label: string, value: CategoryType }[] = [
     { label: 'Help', value: 'help' },
     { label: 'Cleaning', value: 'clean' },
     { label: 'Maintenance', value: 'maintenance' },
-];
+]
 
 interface ViewTicketFormProps {
-    ticketId: number;
-    userId: number;
-    onSuccess: (action: 'updated' | 'deleted', title: string) => void;
-    onCancel: () => void;
+    ticketId: number
+    userId: number
+    onSuccess: (action: 'updated' | 'deleted', title: string) => void
 }
 
-export default function ViewTicketForm({ ticketId, userId, onSuccess, onCancel }: ViewTicketFormProps) {
-    const [title, setTitle] = useState('');
-    const [description, setDescription] = useState('');
-    const [category, setCategory] = useState<CategoryType>('help');
-    const [status, setStatus] = useState<string>('open');
-    const [loading, setLoading] = useState(true);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+export default function ViewTicketForm({ticketId, userId, onSuccess}: ViewTicketFormProps) {
+    const [title, setTitle] = useState('')
+    const [description, setDescription] = useState('')
+    const [category, setCategory] = useState<CategoryType>('help')
+    const [status, setStatus] = useState<string>('open')
+    const [loading, setLoading] = useState(true)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
         const fetchTicketDetails = async () => {
-            setLoading(true);
+            setLoading(true)
             try {
-                const response = await fetch(`http://192.168.100.44:8000/api/ticket-${ticketId}/view`, {
+                const response = await fetch(`http://0.0.0.0:8000/api/ticket-${ticketId}/view`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ticketId, requestId: userId })
-                });
-                if (!response.ok) throw new Error('Failed to fetch ticket details');
-                const data = await response.json();
-                setTitle(data.title || '');
-                setDescription(data.description || '');
-                setCategory(data.category || 'help');
-                setStatus(data.status || 'open');
+                })
+                if (!response.ok) throw new Error('Failed to fetch ticket details')
+                const data = await response.json()
+                setTitle(data.title || '')
+                setDescription(data.description || '')
+                setCategory(data.category || 'help')
+                setStatus(data.status || 'open')
             } catch (err: any) {
-                setError(err.message);
+                setError(err.message)
             } finally {
-                setLoading(false);
+                setLoading(false)
             }
-        };
+        }
 
-        fetchTicketDetails();
-    }, [ticketId, userId]);
+        fetchTicketDetails()
+    }, [ticketId, userId])
 
     const handleUpdate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
+        e.preventDefault()
+        setIsSubmitting(true)
         try {
-            const response = await fetch(`http://192.168.100.44:8000/api/ticket-${ticketId}/update`, {
+            const response = await fetch(`http://0.0.0.0:8000/api/ticket-${ticketId}/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ticketId, requestId: userId, title, description, category })
-            });
-            if (!response.ok) throw new Error('Failed to update ticket');
-            onSuccess('updated', title);
+            })
+            if (!response.ok) throw new Error('Failed to update ticket')
+            onSuccess('updated', title)
         } catch (err: any) {
-            console.error("Update Error:", err);
+            console.error("Update Error:", err)
         } finally {
-            setIsSubmitting(false);
+            setIsSubmitting(false)
         }
-    };
+    }
 
     const handleDelete = async () => {
-        setIsSubmitting(true);
+        setIsSubmitting(true)
         try {
-            const res = await fetch(`http://192.168.100.44:8000/api/ticket-${ticketId}/delete`, {
+            const res = await fetch(`http://0.0.0.0:8000/api/ticket-${ticketId}/delete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ticketId, requestId: userId })
-            });
+            })
             
             if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.detail || 'Failed to delete ticket');
+                const errorData = await res.json()
+                throw new Error(errorData.detail || 'Failed to delete ticket')
             }
 
-            onSuccess('deleted', title || 'Ticket');
+            onSuccess('deleted', title || 'Ticket')
         } catch (err) {
-            console.error("Delete Error:", err);
+            console.error("Delete Error:", err)
         }
-    };
+    }
 
     if (loading) {
-        return <div className="text-center py-8 text-gray-500 font-medium">Loading ticket details...</div>;
+        return <div className="text-center py-8 text-gray-500 font-medium">Loading ticket details...</div>
     }
 
     return (

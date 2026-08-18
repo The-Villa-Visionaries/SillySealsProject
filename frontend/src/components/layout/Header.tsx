@@ -1,5 +1,5 @@
 import SearchIcon from '../icons/SearchIcon'
-import { useState } from "react";
+import { useState } from "react"
 
 interface HeaderProps {
     userName: string
@@ -18,15 +18,15 @@ export default function Header({userName, avatarUrl, showSearch = true, userId, 
         }
 
         try {
-            const res = await fetch('http://192.168.100.44:8000/api/search/ticket', {
+            const res = await fetch('http://0.0.0.0:8000/api/search', {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ requestId: userId, query }),
             })
             if (res.ok) {
                 const searchResults: Record<string, string> = await res.json()
-                const matchedIds = Object.keys(searchResults).map(Number);
-                onSearchResults?.(matchedIds);
+                const matchedIds = Object.keys(searchResults).map(Number)
+                onSearchResults?.(matchedIds)
             }
         } catch (e) {
             console.error("Failed to search tickets:", e)
@@ -60,7 +60,7 @@ export default function Header({userName, avatarUrl, showSearch = true, userId, 
                 {showSearch &&(
                     <form action='javascript:void(0)' onSubmit={handleSubmit} className="relative w-full h-[50px] bg-white border-[3px] border-[#0F5132] rounded-[25px] flex items-center px-3.5 shadow-sm">
                         <SearchIcon />
-                        <input type="search" value={searchQuery} onChange={(e) => {setSearchQuery(e.target.value); if (!e.target.value.trim()) performSearch('')}} onKeyDown={(e) => {if (e.key === 'Enter') {e.preventDefault(); performSearch(searchQuery)}}} placeholder="Search" className="w-full bg-transparent text-[20px] font-normal text-slate-800 placeholder-[#8C8C8C] focus:outline-none ml-[5px]"/>
+                        <input type="search" value={searchQuery} onChange={(e) => {setSearchQuery(e.target.value); if (!e.target.value.trim()) performSearch('')}} onKeyDown={(e) => {if (e.key === 'Enter') {e.preventDefault(), performSearch(searchQuery)}}} placeholder="Search" className="w-full bg-transparent text-[20px] font-normal text-slate-800 placeholder-[#8C8C8C] focus:outline-none ml-[5px]"/>
                     </form>
                 )}
             </div>

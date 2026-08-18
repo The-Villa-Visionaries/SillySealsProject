@@ -1,5 +1,5 @@
-import { ArrowUpDown, User, Circle } from "lucide-react";
-import { useState } from "react";
+import { ArrowUpDown, User, Circle } from "lucide-react"
+import { useState } from "react"
 
 interface FilterSheetProp {
     isOpen: boolean
@@ -7,7 +7,7 @@ interface FilterSheetProp {
 }
 
 export default function FilterSheet({isOpen, onClose}: FilterSheetProp) {
-    const [activeFilter, setActiveFiler] = useState<'order' | 'Assigned' | 'status'>('status');
+    const [activeFilter, setActiveFiler] = useState<'order' | 'Assigned' | 'status'>('status')
 
     if (!isOpen) return null
     return (

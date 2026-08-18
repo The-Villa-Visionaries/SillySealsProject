@@ -13,9 +13,9 @@ export default function TicketToast({type, ticket, onClose, duration=3000}: Tick
     useEffect(() => {
         const timer = setTimeout(() => {
             onClose?.()
-        }, duration);
+        }, duration)
 
-        return () => clearTimeout(timer);
+        return () => clearTimeout(timer)
     }, [onClose, duration])
     return (
         <div className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[412] h-[136px] border-b-0 border-white rounded-t-[50px] flex flex-col items-center justify-center gap-2 px-6 shadow-2xl z-40 transistion-all ${

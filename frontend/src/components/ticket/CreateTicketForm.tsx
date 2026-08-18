@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import HelpIcon from '../icons/HelpIcon';
-import CleanIcon from '../icons/CleanIcon';
-import MaintenanceIcon from '../icons/MaintenanceIcon';
-import CustomInput from '../common/CustomInput';
-import DropDown from '../common/DropDown';
-import TicketCard from './TicketCard';
+import { useState } from 'react'
+import HelpIcon from '../icons/HelpIcon'
+import CleanIcon from '../icons/CleanIcon'
+import MaintenanceIcon from '../icons/MaintenanceIcon'
+import CustomInput from '../common/CustomInput'
+import DropDown from '../common/DropDown'
+import TicketCard from './TicketCard'
 
 type CategoryType = 'help' | 'clean' | 'maintenance'
 const categories: {label:string, value:CategoryType}[] = [
@@ -16,7 +16,7 @@ const iconMap = {
     help: HelpIcon,
     clean: CleanIcon,
     maintenance: MaintenanceIcon,
-};
+}
 
 interface CreateTicketFormProps {
     userId: number
@@ -41,7 +41,7 @@ export default function CreateTicketForm({userId, onSuccess, onCancel}: CreateTi
         setError(null)
 
         try {
-            const response = await fetch(`http://192.168.100.44:8000/api/ticket/create`, {
+            const response = await fetch(`http://0.0.0.0:8000/api/ticket/create`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -52,7 +52,7 @@ export default function CreateTicketForm({userId, onSuccess, onCancel}: CreateTi
                 })
             })
             if (!response.ok) {
-                const errData = await response.json();
+                const errData = await response.json()
                 throw new Error(errData.detail || "Failed to create ticket")
             }
             onSuccess(title)
