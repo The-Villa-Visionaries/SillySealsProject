@@ -39,19 +39,6 @@ def ConnectDB():
     conn.row_factory = sqlite3.Row
     return conn
 
-def AuthCheck(data, validation=[]):
-    if validation == []:
-        validation = ['user', 'staff', 'admin']
-    with ConnectDB() as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, role FROM users WHERE id = ?', (data.requestId,))
-        user = cursor.fetchone()
-        if not user:
-            raise HTTPException(status_code=401, detail="UnAuthorized!")
-        elif not user['role'] in validation:
-            raise HTTPException(status_code=403, detail="The server has refused your requested.")
-        return user
-
 def initDB():
     with ConnectDB() as conn:
         cursor = conn.cursor()
@@ -64,10 +51,10 @@ def initDB():
         )""")
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
-            primarySID INTIGER PRIMARY KEY,
-            altSID INTIGER,
+            primarySID TEXT PRIMARY KEY,
+            altSID TEXT,
             userId INTIGER UNIQUE,
-            expireTime INTIGER
+            expireTime FLOAT
         )""")
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS tickets (
@@ -90,16 +77,40 @@ def initDB():
         conn.commit()
 initDB()
 
+def AuthCheck(data, validation=[]):
+    if validation == []:
+        validation = ['user', 'staff', 'admin']
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, role FROM users WHERE id = ?', (data.requestId,))
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=401, detail="UnAuthorized!")
+        elif not user['role'] in validation:
+            raise HTTPException(status_code=403, detail="The server has refused your requested.")
+        return user
+
+def GenSID(userID, conn):
+    cursor = conn.cursor()
+    primarySID = secrets.token_hex(32)
+    expireTime = time.time() + 900
+    cursor.execute("""
+        INSERT INTO sessions (primarySID, altSID, userID, expireTime)
+        VALUES (?, ?, ?, ?)
+    """, (primarySID, '', userID, expireTime))
+    print(primarySID)
+    return primarySID
+
 class SearchALL(BaseModel):
     requestId:int
     query:str
-    mode:str | None = None
+    searchMode:str | None = None
 @app.post("/api/search", status_code=200)
 def SearchAll(data:SearchALL):
     user = AuthCheck(data)
     with ConnectDB() as conn:
         cursor = conn.cursor()
-        if data.mode == 'category' and user['role'] == 'admin':
+        if data.searchMode == 'category' and user['role'] == 'admin':
             cursor.execute('''
                 SELECT name, color
                 FROM category
@@ -184,9 +195,10 @@ def AbandonTicket(data: FetchOneTICKET):
 class UpdateTICKETS(BaseModel):
     ticketId:int
     requestId:int
+    user:int | None = None
     title:str | None = Field(None, min_length=3, max_length=50)
     description:str | None = Field(None, max_length=250)
-    category:Literal['help', 'clean', 'maintenance'] | None = None
+    category:str | None = None
     status:str | None = None
     staffId:int | None = None
     deleted:bool | None = None
@@ -195,10 +207,11 @@ def UpdateTicket(data: UpdateTICKETS):
     user = AuthCheck(data)
     with ConnectDB() as conn:
         cursor = conn.cursor()
-        cursor.execute('''
+        delete:str = '' if user['role'] == 'admin' else ' AND deleted = 0'
+        cursor.execute(f'''
             SELECT ticketId, userId, staffId, status
             FROM tickets
-            WHERE ticketId = ? AND deleted = 0
+            WHERE ticketId = ?{delete}
         ''', (data.ticketId,))
         ticket = cursor.fetchone()
         if not ticket:
@@ -211,19 +224,18 @@ def UpdateTicket(data: UpdateTICKETS):
                 SET title = ?, description = ?, category = ?
                 WHERE ticketId = ? AND deleted = 0
             ''', (data.title, data.description, data.category, data.ticketId))
-        if ticket['staffId'] == data.requestId or ticket['staffId'] == None and user['role'] != 'user': 
-            print(ticket['status'])
+        if ticket['staffId'] == data.requestId or ticket['staffId'] == None and user['role'] == 'staff': 
             cursor.execute('''
                 SELECT ticketId
                 FROM tickets
                 WHERE staffId = ? AND status != 'closed' AND deleted = 0
             ''', (data.requestId,))
             Check = cursor.fetchone()
-            if Check and ticket['status'] == 'open':
+            if Check and ticket['status'] == 'open' and user["role"] == 'admin':
                 raise HTTPException(status_code=409, detail="Please close your existing ticket before accepting a new ticket!")
-            elif data.status == 'open':
+            elif data.status == 'open' and user["role"] == 'admin':
                 raise HTTPException(status_code=400, detail="Status cannot be empty!")
-            elif ticket['status']== 'closed' and Check:
+            elif ticket['status']== 'closed' and Check and user["role"] == 'admin':
                 raise HTTPException(status_code=400, detail="Please close your existing ticket before changing a ticket!")
             cursor.execute('''
                 UPDATE tickets
@@ -231,12 +243,13 @@ def UpdateTicket(data: UpdateTICKETS):
                 WHERE ticketId = ? AND deleted = 0
             ''', (data.status, data.requestId, data.category, data.ticketId))
         if user['role'] == 'admin':
-            deleted = 1 if data.deleted else 0
+            if not data.deleted:
+                data.deleted = False
             cursor.execute('''
                 UPDATE tickets
-                SET status = ?, deleted = ?
+                SET userId = ?, title = ?, description = ?, category = ?, status = ?, staffId = ?, deleted = ?
                 WHERE ticketId = ?
-            ''', (data.status, deleted  , data.ticketId))
+            ''', (data.user, data.title, data.description, data.category, data.status, data.staffId, int(data.deleted), data.ticketId))
     return {"status": "success", "message": f"Ticket-{data.ticketId} updated"}
         
 class FetchAllTICKETS(BaseModel):
@@ -247,7 +260,6 @@ def AllTickets(data: FetchAllTICKETS):
     user = AuthCheck(data)
     with ConnectDB() as conn:
         cursor = conn.cursor()
-
     if user['role'] == 'admin':
         cursor.execute(f'''
             SELECT ticketId, userId, staffId, title, description, status, category 
@@ -291,8 +303,8 @@ class FetchOneCATEGORY(BaseModel):
     requestId:int
     name:str
 @app.post("/api/category/view", status_code=200)
-def GetCategory(data: FetchOneCATEGORY):
-    AuthCheck(data, ['admin'])
+def GetCategory(data:FetchOneCATEGORY):
+    AuthCheck(data)
     with ConnectDB() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -300,8 +312,22 @@ def GetCategory(data: FetchOneCATEGORY):
             FROM category
             WHERE name = ?
         ''', (data.name,))
-    category = cursor.fetchone()
-    return dict(category)
+        category = cursor.fetchone()
+        return dict(category)
+
+@app.post("/api/category/color", status_code=200)
+def GetCategoryColor(data:FetchOneCATEGORY):
+    AuthCheck(data)
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT color
+            FROM category
+            WHERE name = ?
+        ''', (data.name,))
+        colorRow = cursor.fetchone()
+    if colorRow:
+        return colorRow['color']
 
 @app.post("/api/category/delete", status_code=200)
 def DeleteCategory(data: FetchOneCATEGORY):
@@ -326,11 +352,13 @@ def UpdateCategory(data: UpdateCATEGORY):
     AuthCheck(data, ['admin'])
     with ConnectDB() as conn:
         cursor = conn.cursor()
+        if len(data.color) > 7:
+            raise HTTPException(status_code=409, detail="Color Hex Code is incorect!")  
         cursor.execute('''
             UPDATE category
             SET name = ?, color = ?
             WHERE name = ?
-        ''', (data.changeTo, data.color, data.changeFrom))
+        ''', (data.changeTo, data.color.upper(), data.changeFrom))
         dir = Path("static/icons")
         old = dir / f"{data.changeFrom}.svg"
         new = dir / f"{data.changeTo}.svg"
@@ -380,28 +408,43 @@ async def CreateCategory(data: MakeCATEGORY = Depends()):
 class LogInUSER(BaseModel):
     name:str
     password:str
-@app.post("/login", status_code=200)
+@app.post("/api/login", status_code=200)
 def LogInUser(data: LogInUSER):
     with ConnectDB() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT name, password, id
+            SELECT username, password, id
             FROM users
-            WHERE name = ?
-        """, data.name)
+            WHERE username = ?
+        """, (data.name,))
         user = cursor.fetchone()
         if not user:
             raise HTTPException(status_code=401, detail="Username or Password is Incorrect!")
         password = hashlib.sha256(data.password.encode()).hexdigest()
-        if password == user.password:
-            return GenSID(user.id, conn)
+        if password != user['password']:
+            raise HTTPException(status_code=401, detail="Username or Password is Incorrect!")
+        sid = GenSID(user['id'], conn)
+        return sid
 
-def GenSID(userID, conn):
-    cursor = conn.cursor()
-    primarySID = secrets.token_hex(32)
-    expireTime = time.time() + 900
-    cursor.execute("""
-        INSERT INTO sessions (primarySID, altSID, userID, expireTime)
-        VALUES (?, ?, ?, ?)
-    """, (primarySID, 0, userID, expireTime))
-    return primarySID
+class SignUpUSER(BaseModel):
+    name:str
+    password:str
+@app.post("/api/signup", status_code=200)
+def SignUpUser(data: SignUpUSER):
+    with ConnectDB() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT username
+            FROM users
+            WHERE username = ?
+        """, (data.name,))
+        user = cursor.fetchone()
+        if user:
+            raise HTTPException(status_code=401, detail="Username has already been taken!")
+        password = hashlib.sha256(data.password.encode()).hexdigest()       
+        cursor.execute('''
+            INSERT INTO users (username, password)
+            VALUES (?, ?)
+        ''', (data.name, password))
+        userId = cursor.lastrowid
+        return GenSID(userId, conn)
