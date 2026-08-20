@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import CustomInput from '../components/common/CustomInput'
 import DropDown from '../components/common/DropDown'
-import TicketCard from '../components/ticket/TicketCard'
+import TicketCard from '../components/ticket & category/TicketCard'
 import Header from '../components/layout/Header'
 import PageWrapper from '../components/layout/PageWrapper'
 import Confidential from '../../../confidential'
@@ -129,13 +129,13 @@ export default function CreateTicketPage({ onSuccess, onCancel }: CreateTicketPa
                         <button
                             type="button"
                             onClick={handleBack}
-                            className="w-1/2 h-[65px] bg-gradient-to-b from-[#451414] to-[#540707] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform">
+                            className="w-1/2 h-[65px] bg-gradient-to-b from-[#3E1515] to-[#B21212] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform">
                             Back
                         </button>
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="w-1/2 h-[65px] bg-gradient-to-b from-[#14452F] to-[#1A5407] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform disabled:opacity-50">
+                            className="w-1/2 h-[65px] bg-gradient-to-b from-[#243E15] to-[#12B23F] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform disabled:opacity-50">
                             {isSubmitting ? "Creating..." : "Create"}
                         </button>
                     </div>

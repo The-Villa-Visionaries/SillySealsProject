@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import CustomInput from '../components/common/CustomInput'
 import DropDown from '../components/common/DropDown'
-import TicketCard from '../components/ticket/TicketCard'
+import TicketCard from '../components/ticket & category/TicketCard'
 import Header from '../components/layout/Header'
 import Confidential from '../../../confidential'
 import PageWrapper from '../components/layout/PageWrapper'
@@ -18,9 +18,10 @@ const categories: { label: string, value: CategoryType }[] = [
 interface ViewTicketPageProps {
     ticket?: number
     onSuccess?: (action: 'updated' | 'deleted', title: string) => void
+    onCancel?: () => void
 }
 
-export default function ViewTicketPage({ ticket: propTicketId, onSuccess }: ViewTicketPageProps) {
+export default function ViewTicketPage({ticket: propTicketId, onSuccess, onCancel}: ViewTicketPageProps) {
     const { ticket } = useParams<{ ticket: string }>()
     const ticketId = ticket ? Number(ticket.replace('ticket-', '')) : NaN;
     const navigate = useNavigate()
@@ -110,28 +111,42 @@ export default function ViewTicketPage({ ticket: propTicketId, onSuccess }: View
             setIsSubmitting(false)
         }
     }
-
     const handleDelete = async () => {
+        if (!window.confirm(`Are you sure you want to delete "${title}"?`)) {
+            return
+        }
+
         setIsSubmitting(true)
         setError(null)
 
         try {
-            const res = await fetch(`http://0.0.0.0:8000/api/ticket-${ticketId}/delete`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ticketId, requestId: currentUserId })
+            const response = await fetch(`http://0.0.0.0:8000/api/ticket-${ticketId}/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({requestId: currentUserId, ticketId})
             })
 
-            if (!res.ok) {
-                const errorData = await res.json()
-                throw new Error(errorData.detail || 'Failed to delete ticket')
+            if (!response.ok) {
+                const errData = await response.json()
+                throw new Error(errData.detail || "Failed to delete category")
             }
 
-            handleActionSuccess('deleted', title || 'Ticket')
+            if (onSuccess) {
+                onSuccess('deleted', String(ticketId))
+            } else {
+                navigate('/')
+            }
         } catch (err: any) {
             setError(err.message)
         } finally {
             setIsSubmitting(false)
+        }
+    }
+    const handleBack = () => {
+        if (onCancel) {
+            onCancel()
+        } else {
+            navigate('/')
         }
     }
 
@@ -147,7 +162,6 @@ export default function ViewTicketPage({ ticket: propTicketId, onSuccess }: View
                 showSearch={false}
                 userId={currentUserId}
             />
-
             <PageWrapper title="View Ticket">
                 <div className="flex flex-col items-center w-full max-w-md mx-auto px-4 pt-4 gap-3">
                     {error && (
@@ -155,14 +169,12 @@ export default function ViewTicketPage({ ticket: propTicketId, onSuccess }: View
                             {error}
                         </div>
                     )}
-
                     <CustomInput
                         label="Title"
                         value={title}
                         onChange={e => setTitle(e.target.value)}
                         placeholder="Enter a Title..."
                     />
-
                     <CustomInput
                         label="Description"
                         value={description}
@@ -170,20 +182,24 @@ export default function ViewTicketPage({ ticket: propTicketId, onSuccess }: View
                         onChange={e => setDescription(e.target.value)}
                         placeholder="Enter a Description..."
                     />
-
                     <DropDown
                         label="Category"
                         value={category}
                         options={categories}
                         onChange={(val) => setCategory(val as CategoryType)}
                     />
+                    <button 
+                        onClick={handleDelete}
+                        className="w-[70vw] h-[65px] mt-5 bg-gradient-to-b from-[#8c2e2e] to-[#e31313] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform">
+                        Delete
+                    </button>
                 </div>
 
                 <div className="flex flex-col w-full fixed bottom-0 left-0 right-0 items-center justify-center z-20 bg-white pb-6 pt-3">
                     <div className="w-full max-w-md px-2 mb-4">
                         <h3 className="text-[#14452F] font-bold text-[23px] leading-[29px] mb-2">Preview</h3>
                         <TicketCard 
-                            isPreview 
+                            isPreview
                             title={title || "Loading..."} 
                             description={description || "Loading..."} 
                             category={category} 
@@ -194,15 +210,15 @@ export default function ViewTicketPage({ ticket: propTicketId, onSuccess }: View
                     <div className="flex items-center justify-between w-[85vw] max-w-md gap-4">
                         <button
                             type="button"
-                            onClick={handleDelete}
+                            onClick={handleBack}
                             disabled={isSubmitting}
-                            className="w-1/2 h-[65px] bg-gradient-to-b from-[#451414] to-[#540707] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform">
-                            Delete
+                            className="w-1/2 h-[65px] bg-gradient-to-b from-[#3E1515] to-[#B21212] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform">
+                            Back
                         </button>
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="w-1/2 h-[65px] bg-gradient-to-b from-[#14452F] to-[#1A5407] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform disabled:opacity-50">
+                            className="w-1/2 h-[65px] bg-gradient-to-b from-[#243E15] to-[#12B23F] rounded-[18px] text-white font-black italic text-[20px] shadow-md active:scale-95 transition-transform disabled:opacity-50">
                             {isSubmitting ? "Updating..." : "Update"}
                         </button>
                     </div>

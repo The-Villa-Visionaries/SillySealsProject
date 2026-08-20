@@ -1,7 +1,7 @@
 interface CustomInputProps {
     label: string
     value: string
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void
+    onChange?: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void
     placeholder?: string
     rows?: number
     blocked?: string
@@ -9,7 +9,7 @@ interface CustomInputProps {
 
 export default function CustomInput({label, value, onChange, placeholder, rows, blocked}: CustomInputProps) {
     return (
-        <div className="relative my-4 w-[70vw]">
+        <div className="relative mt-4 w-[70vw]">
             {blocked ? (
                 <label className="absolute -top-[14px] left-[20px] z-10 px-1 font-black italic text-[20px] leading-[24px] text-[#8C8C8C] flex items-center select-none [text-shadow:3px_3px_0_#fff,-3px_-3px_0_#fff,3px_-3px_0_#fff,-3px_3px_0_#fff,3px_0_0_#fff,-3px_0_0_#fff,0_3px_0_#fff,0_-3px_0_#fff]">
                     {label}

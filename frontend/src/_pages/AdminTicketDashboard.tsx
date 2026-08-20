@@ -19,7 +19,7 @@ interface Ticket {
     category: string
 }
 
-const STATUSES = ['Open', 'In-Progress', 'Resolved']
+const STATUSES = ['Open', 'In-Progress', 'Resolved', 'Closed']
 
 export default function Home() {
     const navigate = useNavigate()
@@ -28,7 +28,7 @@ export default function Home() {
     const [tickets, setTickets] = useState<Ticket[]>([])
     const [isLoading, setIsLoading] = useState(false)
 
-    const currentUserId = 5
+    const currentUserId = 3
     const fetchTickets = useCallback(async () => {
         setIsLoading(true)
         try {
@@ -68,10 +68,10 @@ export default function Home() {
                 showSearch={true}
                 userId={currentUserId}
                 onSearchResults={handleSearchResults}
-                page='staff'
+                page='admin'
             />
 
-            <PageWrapper title="Tickets" page='staff'>
+            <PageWrapper title="Tickets" page='admin'>
                 <div className="flex flex-col gap-2">
                     {isLoading ? (
                         <p className="text-center py-8 text-gray-500 font-medium">Loading tickets...</p>
@@ -82,14 +82,14 @@ export default function Home() {
                             )
                             return (
                                 <div key={status} className="flex flex-col">
-                                    <SectionHeader status={status} page='staff'/>
+                                    <SectionHeader status={status} page='admin'/>
                                     {statusTickets.length > 0 ? (
                                         statusTickets.map((ticket) => (
                                             <TicketCard
                                                 key={ticket.ticketId}
                                                 ticketId={ticket.ticketId}
                                                 requestId={currentUserId}
-                                                onClick={() => navigate(`/staff/ticket-${ticket.ticketId}/view`)}
+                                                onClick={() => navigate(`/admin/ticket-${ticket.ticketId}/view`)}
                                             />
                                         ))
                                     ) : (
@@ -109,7 +109,7 @@ export default function Home() {
                 onRefreshClick={fetchTickets} 
                 onCreateClick={() => navigate('/ticket/create')}
                 pram={['F', 'R']}
-                page='staff'
+                page='admin'
             />
 
             <FilterSheet isOpen={isFilterOpen} onClose={() => setIsFilterOpen(false)} />
