@@ -1,4 +1,8 @@
-export default function Edit() {
+interface EditProps {
+    switchDetail: () => void;
+}
+
+export default function Edit({ switchDetail }: EditProps) {
     return (
         <>             
              <div className="w-full border-b border-[#E2E8F0] p-4 flex gap-5 items-center">
@@ -6,7 +10,7 @@ export default function Edit() {
                 <h1 className="text-[15px] font-bold">Server rack overheating — fans not spinning</h1>
             </div>
             <div className="w-full border-b border-[#E2E8F0] pt-2 flex gap-10 text-[#64748B] text-[13px] font-bold flex justify-center">
-                <div className="pb-2 hover:border-b hover:border-[#9F4EFF] border-black/0 border-b-2 hover:border-b-2 w-35 flex justify-center hover:text-[#9F4EFF]">
+                <div className="pb-2 border-b border-[#9F4EFF] border-b-2 w-35 flex justify-center text-[#9F4EFF]">
                     <h1>Editing Ticket</h1>
                 </div>
             </div>
@@ -30,6 +34,14 @@ export default function Edit() {
                 <h1 className="text-[15px] font-bold">Priority Score</h1>
                 <p className="text-[13px] text-[#64748B] pl-3 mt-1">Priority Score is influenced by Category, Location, and user set score.</p>
                 <input type="number" step="1" min="0" max="5" placeholder="(Enter priority score from 1 to 5)" className="w-full h-5 max-h-25 text-[13px] text-[#64748B] mt-1 pl-3 focus:outline-none focus:ring-0 focus:border-transparent" defaultValue={13} />
+            </div>
+            <div className="w-full p-4 flex justify-between absolute bottom-0 left-0 border-t border-[#E2E8F0] bg-white z-27">
+                <button type="button" className="w-[calc(50%-10px)] bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600" onClick={switchDetail}>
+                    Cancel
+                </button>
+                <button type="button" className="w-[calc(50%-10px)] bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600" onClick={switchDetail}>
+                    Save Changes
+                </button>
             </div>
         </>
     )

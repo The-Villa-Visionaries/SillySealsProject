@@ -1,9 +1,9 @@
 import { useState } from "react";
-import _View from "../panels/_View";
+import _View from "../Ticket/_ViewTicket";
 import Card from "./Card";
 import TableContextRow from "./TableContextRow";
 import TableRow from "./TableRow";
-import _Create from "../panels/_Create";
+import _Create from "../Ticket/_CreateTicket";
 
 export default function Main() {
     const [isViewOpen, setIsViewOpen] = useState<boolean>(false)
@@ -20,8 +20,8 @@ export default function Main() {
                     <Card title="Critical" value={2} description="Tickets that are critical and unresolved" />
                     <Card title="Closed" value={7} description="Tickets that are closed" />
                 </div>
-                <div className="w-full mt-4 bg-white rounded-[20px] border-[#E2E8F0] border overflow-auto">
-                    <TableContextRow />
+                <div className="w-full min-h-17 my-4 bg-white rounded-[20px] border-[#E2E8F0] border overflow-auto">
+                    <TableContextRow field={["Category", "Title & Description", "Priority", "Status", "Location", "Assigned To", "Action"]} colspan={[1, 5, 1, 1, 2, 2, 1]} totalCols={13} />
                     <TableRow onView={() => setIsViewOpen(true)} />
                     <TableRow onView={() => setIsViewOpen(true)} />
                     <TableRow onView={() => setIsViewOpen(true)} />

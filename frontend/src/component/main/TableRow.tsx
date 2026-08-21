@@ -4,7 +4,7 @@ interface TableRowProps {
 
 export default function TableRow({ onView }: TableRowProps) {
     return (
-        <div className="flex w-full grid grid-cols-13 h-10 border-t border-[#E2E8F0] px-5 items-center">
+        <div className="flex w-full grid grid-cols-13 h-10 border-t border-[#E2E8F0] px-5 items-center z-5 bg-white">
             <div className="col-span-1 flex items-center justify-center">
                 <img src="../../../../public/favicon.svg" alt="p1"  className="w-5 h-5 object-cover"/>
             </div>
