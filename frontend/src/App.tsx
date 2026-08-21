@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import { useState } from 'react'
 import Header from './components/layout/Header'
 import PageWrapper from './components/layout/PageWrapper'
@@ -7,6 +8,10 @@ import SectionHeader from './components/ticket/SectionHeader'
 import TicketToast from './components/ticket/TicketToast'
 import FilterSheet from './components/ticket/FilterSheet'
 import Confidential from '../../confidential'
+=======
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Home from './Pages/HomePage'
+>>>>>>> Stashed changes
 
 export default function App() {
     const [currentView, setCurrentView] = useState<'My Tickets' | 'Create Ticket'>('My Tickets');
@@ -19,6 +24,7 @@ export default function App() {
     };
 
     return (
+<<<<<<< Updated upstream
         <div className="min-h-screen bg-[#14452F] flex flex-col items-center relative">
         <Header userName='Naush' avatarUrl={Confidential({x:1})}/>
         <PageWrapper title={currentView}>
@@ -70,4 +76,13 @@ export default function App() {
         )} 
         </div>
     );
+=======
+        <BrowserRouter>
+            <Routes>
+                <Route path="/" element={<Home />}/>
+                <Route path="/home" element={<Home />}/>
+            </Routes>
+        </BrowserRouter>
+    )
+>>>>>>> Stashed changes
 }
