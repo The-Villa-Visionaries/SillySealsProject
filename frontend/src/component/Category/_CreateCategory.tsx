@@ -22,7 +22,7 @@ export default function Create({ onClose, isOpen }: CreateProps) {
                 </div>
                 <div className="w-full px-4 py-2 text-Black">
                     <h1 className="text-[15px] font-bold">Priority Score</h1>
-                    <p className="text-[13px] text-[#64748B] pl-3 mt-1">Priority Score is influenced by Category, Location, and User set score.</p>
+                    <p className="text-[13px] text-[#64748B] pl-3 mt-1">Priority Score is influenced by Category and Location.</p>
                     <input type="number" step="1" min="0" placeholder="(Enter priority score)" className="w-full h-5 max-h-25 text-[13px] text-[#64748B] mt-1 pl-3 focus:outline-none focus:ring-0 focus:border-transparent" />
                 </div>
                 <div className="w-full p-4 flex justify-between absolute bottom-0 left-0 border-t border-[#E2E8F0] bg-white z-27">

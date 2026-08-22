@@ -26,6 +26,11 @@ export default function Edit({ switchDetail }: EditProps) {
                 <h1 className="text-[15px] font-bold">Color</h1>
                 <textarea placeholder="Enter Hex Color" className="w-full h-5 max-h-25 text-[13px] text-[#64748B] mt-1 pl-3 focus:outline-none focus:ring-0 focus:border-transparent" defaultValue="#9F4EFF" />
             </div>
+            <div className="w-full px-4 py-2 text-Black">
+                <h1 className="text-[15px] font-bold">Priority Score</h1>
+                <p className="text-[13px] text-[#64748B] pl-3 mt-1">Priority Score is influenced by Category and Location.</p>
+                <input type="number" step="1" min="0" placeholder="(Enter priority score)" className="w-full h-5 max-h-25 text-[13px] text-[#64748B] mt-1 pl-3 focus:outline-none focus:ring-0 focus:border-transparent" />
+            </div>
             <div className="w-full p-4 flex justify-between absolute bottom-0 left-0 border-t border-[#E2E8F0] bg-white z-27">
                 <button type="button" className="w-[calc(50%-10px)] bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600" onClick={switchDetail}>
                     Cancel

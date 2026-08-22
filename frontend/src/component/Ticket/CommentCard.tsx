@@ -1,7 +1,7 @@
 interface CommentCardProps {
-    username: string;
-    message: string;
-    own?: boolean;
+    username: string
+    message: string
+    own?: boolean
 }
 
 export default function CommentCard({ username, message, own }: CommentCardProps) {
