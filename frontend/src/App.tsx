@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './Pages/HomePage'
-import CategoryPage from './Pages/CategoryPage'
+import StaffNAdminPage from './Pages/StaffNAdminPage'
 
 export default function App() {
     return (
@@ -8,8 +8,8 @@ export default function App() {
             <Routes>
                 <Route path="/" element={<Home />}/>
                 <Route path="/home" element={<Home />}/>
-                
-                <Route path="/category" element={<CategoryPage />}/>
+                <Route path="/staff" element={<StaffNAdminPage />}/>
+                <Route path="/workspace" element={<StaffNAdminPage />}/>
             </Routes>
         </BrowserRouter>
     )

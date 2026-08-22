@@ -94,9 +94,9 @@ def AuthCheck(data:Any, validation:list[str] = ['user', 'staff', 'admin']) -> di
             WHERE uid = ?''', (data.requestId,))
         user = cursor.fetchone()
         if not user:
-            raise HTTPException(status_code=401, detail="Unauthorized request!")
+            raise HTTPException(status_code=404, detail="User not found!")
         elif not user['role'] in validation:
-            raise HTTPException(status_code=403, detail="The server has refused your request.")
+            raise HTTPException(status_code=403, detail="The server has refused your request!")
         return dict(user)
 
 def GenSid(uid:int, conn):
@@ -453,3 +453,157 @@ async def CreateCategory(data:MakeCategory = Depends()):
             VALUES (?, ?, ?, ?)''', (data.name, data.color, data.priorityScore, filePath))
         conn.commit()
     return {'status': 'success', 'message': "Category created successfully."}
+
+class FetchAllLocations(BaseModel):
+    requestId:int
+@app.post('/api/locations', status_code=200)
+def AllLocations(data:FetchAllLocations):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT lid, name, priorityScore 
+            FROM locations 
+            ORDER BY lid ASC''')
+        locationsList:list = cursor.fetchall()
+    return [dict(locationRow) for locationRow in locationsList]
+
+class LogInUser(BaseModel):
+    username:str
+    password:str
+@app.post('/api/login', status_code=200)
+def LogInUserRoute(data:LogInUser):
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT uid, username, password 
+            FROM users 
+            WHERE username = ?''', (data.username,))
+        userRow = cursor.fetchone()
+        if not userRow:
+            raise HTTPException(status_code=401, detail="Username or password is incorrect!")
+        passwordHash:str = hashlib.sha256(data.password.encode()).hexdigest()
+        if passwordHash != userRow['password']:
+            raise HTTPException(status_code=401, detail="Username or password is incorrect!")
+        sessionId:str = GenSid(userRow['uid'], conn)
+        conn.commit()
+    return {'sessionId': sessionId}
+
+class SignUpUser(BaseModel):
+    username:str
+    password:str
+    email:str
+@app.post('/api/signup', status_code=200)
+def SignUpUserRoute(data:SignUpUser):
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT username 
+            FROM users 
+            WHERE username = ?''', (data.username,))
+        userRow = cursor.fetchone()
+        if userRow:
+            raise HTTPException(status_code=401, detail="Username has already been taken!")
+        passwordHash:str = hashlib.sha256(data.password.encode()).hexdigest()
+        cursor.execute('''
+            INSERT INTO users (username, password, email, role) 
+            VALUES (?, ?, ?, 'user')''', (data.username, passwordHash, data.email))
+        newUid = cursor.lastrowid
+        if newUid is None:
+            raise HTTPException(status_code=404, detail="Row not Found!")
+        newUid = int(newUid)
+        sessionId:str = GenSid(newUid, conn)
+        conn.commit()
+    return {'sessionId': sessionId}
+
+class MakeUser(BaseModel):
+    requestId:int
+    username:str
+    email:str
+    role:str
+    password:str
+@app.post('/api/user/create', status_code=201)
+def CreateUser(data:MakeUser):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT username 
+            FROM users 
+            WHERE username = ?''', (data.username,))
+        userRow = cursor.fetchone()
+        if userRow:
+            raise HTTPException(status_code=400, detail="Username already exists!")
+        passwordHash:str = hashlib.sha256(data.password.encode()).hexdigest()
+        cursor.execute('''
+            INSERT INTO users (username, password, email, role, status) 
+            VALUES (?, ?, ?, ?, 'Active')''', (data.username, passwordHash, data.email, data.role))
+        conn.commit()
+    return {'status': 'success', 'message': "User created successfully."}
+
+class FetchOneUser(BaseModel):
+    requestId:int
+    uid:int
+@app.post('/api/user/view', status_code=200)
+def GetUser(data:FetchOneUser) -> dict[str, Any]:
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT uid, username, email, role, status, profilePicture 
+            FROM users 
+            WHERE uid = ?''', (data.uid,))
+        userRow = cursor.fetchone()
+        return dict(userRow)
+
+class UpdateUserModel(BaseModel):
+    requestId:int
+    uid:int
+    username:str
+    email:str
+    role:str
+    status:str
+    password:str | None = None
+@app.post('/api/user/update', status_code=200)
+def UpdateUserRoute(data:UpdateUserModel):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        if data.password and data.password.strip() != "":
+            passwordHash:str = hashlib.sha256(data.password.encode()).hexdigest()
+            cursor.execute('''
+                UPDATE users 
+                SET username = ?, email = ?, role = ?, status = ?, password = ? 
+                WHERE uid = ?''', (data.username, data.email, data.role, data.status, passwordHash, data.uid))
+        else:
+            cursor.execute('''
+                UPDATE users 
+                SET username = ?, email = ?, role = ?, status = ? 
+                WHERE uid = ?''', (data.username, data.email, data.role, data.status, data.uid))
+        conn.commit()
+    return {'status': 'success', 'message': "User updated successfully."}
+
+@app.post('/api/user/delete', status_code=200)
+def DeleteUserRoute(data:FetchOneUser):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM users 
+            WHERE uid = ?''', (data.uid,))
+        conn.commit()
+    return {'status': 'success', 'message': "User deleted successfully."}
+
+class Validate(BaseModel):
+    requestId:int
+@app.post('/api/user/validate', status_code=200)
+def ValidateUser(data:Validate):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT uid, username, email, role, status, profilePicture 
+            FROM users 
+            WHERE uid = ?''', (data.requestId,))
+        userRow = cursor.fetchone()
+        return dict(userRow)

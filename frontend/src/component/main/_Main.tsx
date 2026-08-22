@@ -9,6 +9,7 @@ import Card from "./Card"
 import TableContextRow from "./TableContextRow"
 import TableTicketRow from "./TableTicketRow"
 import TableCategoryRow from "./TableCategoryRow"
+import TableUserRow from "./TableUserRow"
 
 interface Ticket {
     ticketId: number
@@ -32,22 +33,38 @@ interface Category {
     icon: string
 }
 
-export default function Main() {
+interface User {
+    uid: number
+    username: string
+    email: string
+    role: string
+    status: string
+    profilePicture?: string
+}
+
+interface MainProps {
+    requestId: number
+}
+
+export default function Main({ requestId }: MainProps) {
     const [isViewOpen, setIsViewOpen] = useState<'t' | 'u' | 'c' | 'l' | false>(false)
     const [isCreateOpen, setIsCreateOpen] = useState<'t' | 'u' | 'c' | 'l' | false>(false)
     
     const [ticketId, setTicketId] = useState<number>(1)
     const [categoryId, setCategoryId] = useState<number>(1)
-    const [requestId, setRequestId] = useState<number>(1)
+    const [userId, setUserId] = useState<number>(1)
     
     const [tickets, setTickets] = useState<Ticket[]>([])
     const [categories, setCategories] = useState<Category[]>([])
+    const [users, setUsers] = useState<User[]>([])
     
     const [loadingTickets, setLoadingTickets] = useState<boolean>(true)
     const [loadingCategories, setLoadingCategories] = useState<boolean>(true)
+    const [loadingUsers, setLoadingUsers] = useState<boolean>(true)
     
     const [errorTickets, setErrorTickets] = useState<string>("")
     const [errorCategories, setErrorCategories] = useState<string>("")
+    const [errorUsers, setErrorUsers] = useState<string>("")
 
     const fetchTickets = async () => {
         setLoadingTickets(true)
@@ -102,9 +119,36 @@ export default function Main() {
         }
     }
 
+    const fetchUsers = async () => {
+        setLoadingUsers(true)
+        setErrorUsers("")
+        try {
+            const response = await fetch("http://192.168.100.52:8000/api/users", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    requestId: requestId
+                }),
+            })
+            if (response.ok) {
+                const data = await response.json()
+                setUsers(data)
+            } else {
+                setErrorUsers("Failed to fetch users")
+            }
+        } catch (err) {
+            setErrorUsers("Error connecting to server")
+        } finally {
+            setLoadingUsers(false)
+        }
+    }
+
     useEffect(() => {
         fetchTickets()
         fetchCategories()
+        fetchUsers()
     }, [])
 
     const handleViewTicket = (id: number) => {
@@ -117,8 +161,14 @@ export default function Main() {
         setIsViewOpen('c')
     }
 
+    const handleViewUser = (id: number) => {
+        setUserId(id)
+        setIsViewOpen('u')
+    }
+
     const totalTickets = tickets.length
     const totalCategories = categories.length
+    const totalUsers = users.length
 
     return (
         <div className="flex w-full">
@@ -126,7 +176,7 @@ export default function Main() {
                 <h1 className="text-[25px] font-bold">Stats</h1>
                 <div className="flex flex-wrap gap-4 mt-4 justify-center">
                     <Card title="Total Tickets" value={totalTickets} description="Tickets in the system" />
-                    <Card title="Total Users" value={92} description="Users in the system" />
+                    <Card title="Total Users" value={totalUsers} description="Users in the system" />
                     <Card title="Total Categories" value={totalCategories} description="Categories in the system" />
                     <Card title="Total Locations" value={5} description="Locations in the system" />
                 </div>
@@ -157,6 +207,18 @@ export default function Main() {
                 </div>
                 <div className="relative w-full min-h-17 my-4 bg-white rounded-[20px] border-[#E2E8F0] border overflow-auto">
                     <TableContextRow field={["Profile Picture", "UID", "Username", "Mail", "Status", "Role", "Action"]} colspan={[1, 1, 3, 2, 1, 1, 1]} totalCols={10} />
+                    {loadingUsers && <div className="p-4 text-center">Loading users...</div>}
+                    {errorUsers && <div className="p-4 text-center text-red-500">{errorUsers}</div>}
+                    {!loadingUsers && !errorUsers && users.length === 0 && (
+                        <div className="p-4 text-center text-gray-500">No users found.</div>
+                    )}
+                    {!loadingUsers && !errorUsers && users.map((user) => (
+                        <TableUserRow 
+                            key={user.uid} 
+                            onView={() => handleViewUser(user.uid)} 
+                            user={user}
+                        />
+                    ))}
                 </div>
 
                 <div className="w-full flex items-center justify-between">
@@ -191,8 +253,8 @@ export default function Main() {
                 <TicketCreate isOpen={isCreateOpen === 't'} onClose={() => { setIsCreateOpen(false); fetchTickets(); }} requestId={requestId} />
                 <CategoryView isOpen={isViewOpen === 'c'} onClose={() => { setIsViewOpen(false); fetchCategories(); }} cid={categoryId} requestId={requestId} />
                 <CategoryCreate isOpen={isCreateOpen === 'c'} onClose={() => { setIsCreateOpen(false); fetchCategories(); }} />
-                <UserView isOpen={isViewOpen === 'u'} onClose={() => setIsViewOpen(false)} />
-                <UserCreate isOpen={isCreateOpen === 'u'} onClose={() => setIsViewOpen(false)} /> 
+                <UserView isOpen={isViewOpen === 'u'} onClose={() => { setIsViewOpen(false); fetchUsers(); }} uid={userId} requestId={requestId} />
+                <UserCreate isOpen={isCreateOpen === 'u'} onClose={() => { setIsCreateOpen(false); fetchUsers(); }} requestId={requestId} reloadUsers={fetchUsers} /> 
             </div>
         </div>
     )
