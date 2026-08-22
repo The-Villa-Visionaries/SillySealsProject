@@ -9,7 +9,7 @@ import UserCreate from "../User/_CreateUser";
 //import LocationCreate from "../Location/_CreateLocation";
 import Card from "./Card";
 import TableContextRow from "./TableContextRow";
-import TableRow from "./TableRow";
+import TableRow from "./TableTicketRow";
 
 export default function Main() {
     const [isViewOpen, setIsViewOpen] = useState<'t' | 'u' | 'c' | 'l' | false>(false)

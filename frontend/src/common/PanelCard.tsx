@@ -1,14 +1,14 @@
 import { useState } from "react";
 
 interface PanelCardProps {
-    type: string;
-    value: string;
+    type: string | number;
+    value: string | number;
     description?: string;
     readOnly?: boolean;
 }
 
 export default function PanelCard({ type, value, description, readOnly=true }: PanelCardProps) {
-    const [useValue, setValue] = useState<string>(value);
+    const [useValue, setValue] = useState<string | number>(value);
     return (
         <div className="w-50 h-15 flex flex-col justify-center items-center">
             <h3 className="text-[5 px] text-[#64748B]">{type}</h3>

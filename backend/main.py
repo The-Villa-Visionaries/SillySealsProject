@@ -355,6 +355,82 @@ def AllUsers(data:FetchAllUsers):
         usersList:list = cursor.fetchall()
     return [dict(userRow) for userRow in usersList]
 
+class FetchOneCategory(BaseModel):
+    requestId:int
+    cid:int
+@app.post('/api/category/view', status_code=200)
+def GetCategory(data:FetchOneCategory):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT cid, name, color, priorityScore, icon 
+            FROM categories 
+            WHERE cid = ?''', (data.cid,))
+        categoryRow = cursor.fetchone()
+        if not categoryRow:
+            raise HTTPException(status_code=404, detail="Category not found!")
+        return dict(categoryRow)
+
+@app.post('/api/category/delete', status_code=200)
+def DeleteCategory(data:FetchOneCategory):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM categories 
+            WHERE cid = ?''', (data.cid,))
+        conn.commit()
+    return {'status': 'success', 'message': "Category deleted successfully."}
+
+class UpdateCategory:
+    def __init__(self, requestId: int = Form(), cid: int = Form(), name: str = Form(), color: str = Form(..., min_length=3, max_length=7), priorityScore: int = Form(), icon: UploadFile | None = File(None)):
+        self.requestId: int = requestId
+        self.cid: int = cid
+        self.name: str = name
+        self.color: str = color
+        self.priorityScore: int = priorityScore
+        self.icon: UploadFile | None = icon
+@app.post('/api/category/update', status_code=200)
+async def UpdateCategoryRoute(data: UpdateCategory = Depends()):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        if len(data.color) > 7:
+            raise HTTPException(status_code=409, detail="Color hex code is incorrect!")        
+        filePath: str | None = None
+        if data.icon and data.icon.filename:
+            if not str(data.icon.filename).endswith('.svg'):
+                raise HTTPException(status_code=400, detail="Only SVG file types are allowed.")
+            filePath = os.path.join(static, f'{data.name}.svg')
+            with open(filePath, 'wb') as fileHandle:
+                fileHandle.write(await data.icon.read())            
+            cursor.execute('''
+                UPDATE categories 
+                SET name = ?, color = ?, priorityScore = ?, icon = ? 
+                WHERE cid = ?''', (data.name, data.color.upper(), data.priorityScore, filePath, data.cid))
+        else:
+            cursor.execute('''
+                UPDATE categories 
+                SET name = ?, color = ?, priorityScore = ? 
+                WHERE cid = ?''', (data.name, data.color.upper(), data.priorityScore, data.cid))            
+        conn.commit()
+    return {'status': 'success', 'message': "Category updated successfully."}
+
+class FetchAllCategories(BaseModel):
+    requestId:int
+@app.post('/api/categories', status_code=200)
+def AllCategories(data:FetchAllCategories):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT cid, name, color, priorityScore, icon 
+            FROM categories 
+            ORDER BY name DESC''')
+        categoriesList:list = cursor.fetchall()
+    return [dict(categoryRow) for categoryRow in categoriesList]
+
 class MakeCategory:
     def __init__(self, requestId:int = Form(), name:str = Form(), color:str = Form(..., min_length=3, max_length=7), priorityScore:int = Form(), icon:UploadFile = File()) -> None:
         self.requestId:int = requestId

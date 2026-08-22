@@ -17,7 +17,7 @@ interface TableRowProps {
     }
 }
 
-export default function TableRow({ onView, ticket }: TableRowProps) {
+export default function TableTicketRow({ onView, ticket }: TableRowProps) {
     const [title] = useState(ticket.title ? ticket.title : 'No Title')
     const [description] = useState(ticket.description ? ticket.description : 'No Description')
     const [categoryName] = useState(ticket.categoryName ? ticket.categoryName : 'No Category')
