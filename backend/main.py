@@ -1,353 +1,609 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Optional
-import hashlib, sqlite3
-
-class USER(BaseModel):
-    username:str
-    password:str # HASHED
-    role: str
-    isActive:bool
-
-class TICKET(BaseModel):
-    ticketID:Optional[int] = None
-    byUser:str
-    title:str
-    desc:str
-    status:str = None # Assigned Based on System [OPTIONAL]
-    assigned:Optional[str] = None # Assigned Based on System
-    isDeleted:Optional[bool] = False
-
-class COMMENT(BaseModel):
-    id:Optional[int] = None
-    ticketID:int
-    user:str
-    text:str
-
-class CATEGORY(BaseModel):
-    name:str
-    desc:str
-    priority:str
-        
-def init_db():
-    conn = sqlite3.connect(database)
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        username TEXT PRIMARY KEY,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL,
-        active INTEGER DEFAULT 0
-    )""")
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS tickets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user TEXT NOT NULL,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        status TEXT NOT NULL,
-        assigned TEXT,
-        deleted INTEGER DEFAULT 0
-    )""")
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticketID INTEGER NOT NULL,
-        user TEXT NOT NULL,
-        text TEXT NOT NULL,
-        FOREIGN KEY (ticketID) REFERENCES tickets (id)
-    )
-    """)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS categories (
-        name TEXT PRIMARY KEY,
-        description TEXT NOT NULL,
-        priority TEXT DEFAULT 'LOW'
-    )""")
-    conn.commit()
-    conn.close()
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import sqlite3, hashlib, os, time, secrets
+from pydantic import BaseModel, Field
+from typing import Literal, Any
+from datetime import datetime
+from pathlib import Path
 
 app = FastAPI()
-database = "main.db"
-userLogs:list[str] = []
-init_db()
+database:str = 'main.db'
+static:str = 'static/icons'
 
-@app.post("/signup", status_code=201)
-def SignUp(user: USER):
-    conn, cursor = ConnectDB()
-    user.password = hashlib.sha256(user.password.encode('utf-8')).hexdigest()
-    try:
-        cursor.execute(
-            "INSERT INTO users (username, password, role, active) VALUES (?, ?, ?, ?)",
-            (user.username, user.password, user.role, user.isActive)
-        )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['http://localhost:5173', 'http://localhost:3000', '*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*']
+)
+app.mount('/static', StaticFiles(directory='static'), name='static')
+
+def ConnectDb():
+    conn = sqlite3.connect(database)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def InitDb():
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+            uid INTEGER PRIMARY KEY AUTOINCREMENT, 
+            username TEXT UNIQUE NOT NULL, 
+            password TEXT NOT NULL, 
+            email TEXT NOT NULL, 
+            role TEXT NOT NULL, 
+            status TEXT DEFAULT 'Active', 
+            profilePicture TEXT)''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sessions (
+            primarySid TEXT PRIMARY KEY, 
+            altSid TEXT, 
+            uid INTEGER UNIQUE, 
+            expireTime FLOAT)''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS categories (
+            cid INTEGER PRIMARY KEY AUTOINCREMENT, 
+            name TEXT UNIQUE NOT NULL, 
+            color TEXT NOT NULL, 
+            priorityScore INTEGER DEFAULT 0, 
+            icon TEXT)''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS locations (
+            lid INTEGER PRIMARY KEY AUTOINCREMENT, 
+            name TEXT UNIQUE NOT NULL, 
+            priorityScore INTEGER DEFAULT 0)''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tickets (
+            ticketId INTEGER PRIMARY KEY AUTOINCREMENT, 
+            submitterUid INTEGER NOT NULL, 
+            assignedUid INTEGER, 
+            title TEXT NOT NULL, 
+            description TEXT NOT NULL, 
+            status TEXT NOT NULL DEFAULT 'Open', 
+            cid INTEGER, 
+            lid INTEGER, 
+            createdAt FLOAT, 
+            updatedAt FLOAT, 
+            deleted INTEGER DEFAULT 0, 
+            FOREIGN KEY (submitterUid) REFERENCES users(uid), 
+            FOREIGN KEY (assignedUid) REFERENCES users(uid), 
+            FOREIGN KEY (cid) REFERENCES categories(cid), 
+            FOREIGN KEY (lid) REFERENCES locations(lid))''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS comments (
+            commentId INTEGER PRIMARY KEY AUTOINCREMENT, 
+            ticketId INTEGER NOT NULL, 
+            uid INTEGER NOT NULL, 
+            content TEXT NOT NULL, 
+            createdAt FLOAT, 
+            FOREIGN KEY (ticketId) REFERENCES tickets(ticketId), 
+            FOREIGN KEY (uid) REFERENCES users(uid))''')
         conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Username already exists!")
-    Log(f"Created User: {user.username}")
-    return {"detail": f"Created User: {user.username}"}
+    return None
+InitDb()
 
-@app.post("/login", status_code=200)
-def LogIn(username:str, password:str):
-    conn, cursor = ConnectDB()
-    cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
-    row = cursor.fetchone()
-    conn.close()
-    
-    if row and Verify(password, row[0]):
-        Log(f"User logged in: {username}")
-        return {"detail": f"Logged into {username}!"}    
-    raise HTTPException(status_code=401, detail="Username or Password is Incorrect!")
+def AuthCheck(data:Any, validation:list[str] = ['user', 'staff', 'admin']) -> dict[str, Any]:
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT uid, role 
+            FROM users 
+            WHERE uid = ?''', (data.requestId,))
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found!")
+        elif not user['role'] in validation:
+            raise HTTPException(status_code=403, detail="The server has refused your request!")
+        return dict(user)
 
-@app.get("/tickets", response_model=list[TICKET], status_code=200) # Soon will make Staff see only active ones (status not complete)
-def ViewTickets(username:str, status:str = None, assigned:str = None, deleted:bool = False) -> list[TICKET]:
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    query = "SELECT id, user, title, description, status, assigned, deleted FROM tickets WHERE 1=1"
-    params = []
-    if row[0] == "User":
-        query += " AND user = ?"
-        params.append(username)
-    if status is not None:
-        query += " AND status = ?"
-        params.append(status.capitalize())
-    if assigned is not None:
-        query += " AND assigned = ?"
-        params.append(assigned)
-    if deleted is not None:
-        query += " AND deleted = ?"
-        params.append(int(deleted))
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-    usersTickets = [DBConvert(r) for r in rows]
-    if not usersTickets:
-        Log(f'{username} ({row[0]}): No Tickets Found!')
-        raise HTTPException(status_code=404, detail="No Tickets Found!")
-    Log(f'{username} ({row[0]}) has Viewed Tickets')
-    return usersTickets # Page System [skip:skip+10], skip = (page-1)*10
+def GenSid(uid:int, conn):
+    cursor = conn.cursor()
+    primarySid:str = secrets.token_hex(32)
+    expireTime:float = time.time() + 900.0
+    cursor.execute('''
+        INSERT INTO sessions (primarySid, altSid, uid, expireTime) 
+        VALUES (?, ?, ?, ?)''', (primarySid, '', uid, expireTime))
+    print("Session token successfully generated.")
+    return primarySid
 
-@app.get("/ticket-{id}", status_code=200)
-def GetTicket(id:int, username:str) -> TICKET:
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    cursor.execute("SELECT id, user, title, description, status, assigned, deleted FROM tickets WHERE id = ? AND deleted = 0", (id,))
-    ticketRow = cursor.fetchone()
-    conn.close()
+class FetchStats(BaseModel):
+    requestId:int
+@app.post('/api/stats', status_code=200)
+def GetStats(data:FetchStats):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) 
+            FROM tickets 
+            WHERE deleted = 0''')
+        totalTickets:int = cursor.fetchone()[0]
+        cursor.execute('''
+            SELECT COUNT(*) 
+            FROM users''')
+        totalUsers:int = cursor.fetchone()[0]
+        cursor.execute('''
+            SELECT COUNT(*) 
+            FROM categories''')
+        totalCategories:int = cursor.fetchone()[0]
+        cursor.execute('''
+            SELECT COUNT(*) 
+            FROM locations''')
+        totalLocations:int = cursor.fetchone()[0]
+    return {'totalTickets': totalTickets, 'totalUsers': totalUsers, 'totalCategories': totalCategories, 'totalLocations': totalLocations}
+
+class SearchAll(BaseModel):
+    requestId:int
+    query:str
+    searchMode:str | None = None
+@app.post('/api/search', status_code=200)
+def ExecuteSearch(data:SearchAll):
+    user = AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        if data.searchMode == 'category' and user['role'] == 'admin':
+            cursor.execute('''
+                SELECT cid, name, color 
+                FROM categories 
+                WHERE name LIKE ?''', (f'%{data.query}%',))
+            searchOutput:list = cursor.fetchall()
+        else:
+            cursor.execute(f'''
+                SELECT ticketId, title 
+                FROM tickets 
+                WHERE title LIKE ?{' AND deleted = 0' if not user['role'] == 'admin' else ''}''', (f'%{data.query}%',))
+            searchOutput:list = cursor.fetchall()
+        return [dict(searchRow) for searchRow in searchOutput]
+
+class FetchOneTicket(BaseModel):
+    ticketId:int
+    requestId:int
+    allowOpen:str | None = None
+@app.post('/api/ticket-{id}/view', status_code=200)
+def GetTicket(data:FetchOneTicket):
+    user = AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT t.ticketId, sub.username AS submitterUid, assign.username AS assignedUid, t.title, t.description, t.status, c.name AS categoryName, l.name AS locationName, (IFNULL(c.priorityScore, 0) + IFNULL(l.priorityScore, 0)) AS priorityScore, t.createdAt, t.updatedAt
+            FROM tickets t LEFT JOIN categories c ON t.cid = c.cid LEFT JOIN locations l ON t.lid = l.lid LEFT JOIN users sub ON t.submitterUid = sub.uid LEFT JOIN users assign ON t.assignedUid = assign.uid
+            WHERE t.ticketId = ?{' AND t.deleted = 0' if not user['role'] == 'admin' else ''}''', (data.ticketId,))
+        ticketRow = cursor.fetchone()
     if not ticketRow:
-        Log(f'{username} ({row[0]}): Ticket Not Found')    
-        raise HTTPException(status_code=404, detail="Ticket Not Found!")
-    ticket = DBConvert(ticketRow)
-    if row[0] == "User" and username != ticket.byUser:
-        Log(f'{username} ({row[0]}): You do not Own this Ticket by {ticket.byUser}!')
-        raise HTTPException(status_code=401, detail="You do not Own this Ticket!")
-    Log(f'{username} ({row[0]}) has Viewed a Ticket [{id}]')
+        raise HTTPException(status_code=404, detail="Ticket not found!")
+    elif data.allowOpen and not (ticketRow['submitterUid'] == data.requestId or ticketRow['assignedUid'] == data.requestId or user['role'] == 'admin'):
+        raise HTTPException(status_code=403, detail="Access denied!")
+    ticket = dict(ticketRow)
+    if ticket['createdAt']:
+        ticket['createdAt'] = datetime.fromtimestamp(ticket['createdAt']).strftime('%d %m %Y | %H:%M:%S')
+    if ticket['updatedAt']:
+        ticket['updatedAt'] = datetime.fromtimestamp(ticket['updatedAt']).strftime('%d %m %Y | %H:%M:%S')
     return ticket
 
-@app.post("/tickets/create", status_code=201)
-def CreateTicket(ticket: TICKET):
-    conn, cursor = ConnectDB()
-    row = GetUser(ticket.byUser)
-    status = ticket.status.capitalize() or "Pending"
-    cursor.execute("""
-        INSERT INTO tickets (user, title, description, status, assigned, deleted) VALUES (?, ?, ?, ?, ?, ?)
-    """, (ticket.byUser, ticket.title, ticket.desc, status, ticket.assigned, int(ticket.isDeleted)))
-    conn.commit()
-    id = cursor.lastrowid
-    conn.close()
-    Log(f'{ticket.byUser} ({row[0]}) has made a Ticket [{id}]')
-    return {"detail": f"Ticket Created [{id}]!"}
-    # 409 Conflict
+@app.post('/api/ticket-{id}/delete', status_code=200)
+def DeleteTicket(data:FetchOneTicket):
+    user = AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT ticketId, submitterUid FROM tickets 
+            WHERE ticketId = ? AND deleted = 0''', (data.ticketId,))
+        ticketRow = cursor.fetchone()
+        if not ticketRow:
+            raise HTTPException(status_code=404, detail="Ticket not found!")
+        if not (ticketRow['submitterUid'] == data.requestId or user['role'] == 'admin'):
+            raise HTTPException(status_code=403, detail="Access denied!")
+        cursor.execute('''
+            UPDATE tickets SET deleted = 1 
+            WHERE ticketId = ?''', (data.ticketId,))
+    return {'status': 'success', 'message': "Deleted ticket successfully."}
 
-@app.post("/ticket-{id}/update", status_code=201)
-def UpdateTicket(id:int, username:str, ticket: TICKET):
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    cursor.execute("SELECT user, title, description, status, assigned, deleted FROM tickets WHERE id = ?", (id,))
-    ticketRow = cursor.fetchone()
-    if not ticketRow:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Ticket Not Found!")
-    user, cTitle, cDesc, cStatus, cAssigned, cDeleted = ticketRow
-    cDeleted = bool(cDeleted)
-    if username == user:
-        title = ticket.title if ticket.title else cTitle
-        desc = ticket.desc if ticket.desc else cDesc
-        cursor.execute("UPDATE tickets SET title = ?, description = ? WHERE id = ?", (title, desc, id))
-    elif row[0] == "Staff" and username == cAssigned and not cDeleted:
-        status = ticket.status.capitalize() if ticket.status else cStatus
-        cursor.execute("UPDATE tickets SET status = ? WHERE id = ?", (status, id))
-    elif row[0] == "Admin":
-        status = ticket.status.capitalize() if ticket.status else cStatus
-        assigned = ticket.assigned if ticket.assigned is not None else cAssigned
-        deleted = ticket.isDeleted if ticket.isDeleted is not None else cDeleted
-        cursor.execute("UPDATE tickets SET status = ?, assigned = ?, deleted = ? WHERE id = ?", (status, assigned, int(deleted), id))
-    else:
-        conn.close()
-        raise HTTPException(status_code=401, detail="You are not authorized to update this ticket!")
-    conn.commit()
-    conn.close()
-    Log(f"{username} ({row[0]}) updated ticket [{id}]")
-    return {"detail": f"Ticket #{id} updated successfully by {username}."}
+class UpdateTickets(BaseModel):
+    ticketId: int
+    requestId: int
+    targetUsername: str | None = None
+    title: str | None = Field(None, min_length=3, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    categoryName: str | None = None
+    locationName: str | None = None
+    status: str | None = None
+    assignedUsername: str | None = None
+    submitterUsername: str | None = None
+    deleted: bool | None = None
+@app.post('/api/ticket-{id}/update', status_code=200)
+def UpdateTicket(data: UpdateTickets):
+    print(data)
+    user = AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        resolvedSubmitterUid: int | None = None
+        if data.submitterUsername:
+            cursor.execute('SELECT uid FROM users WHERE username = ?', (data.submitterUsername,))
+            subRow = cursor.fetchone()
+            if not subRow:
+                raise HTTPException(status_code=404, detail=f"Submitter user '{data.submitterUsername}' not found!")
+            resolvedSubmitterUid = subRow['uid']
+        resolvedAssignedUid: int | None = None
+        if data.assignedUsername:
+            cursor.execute('SELECT uid FROM users WHERE username = ?', (data.assignedUsername,))
+            assignRow = cursor.fetchone()
+            if not assignRow:
+                raise HTTPException(status_code=404, detail=f"Assigned user '{data.assignedUsername}' not found!")
+            resolvedAssignedUid = assignRow['uid']
+        resolvedTargetUid: int | None = None
+        if data.targetUsername:
+            cursor.execute('SELECT uid FROM users WHERE username = ?', (data.targetUsername,))
+            targetRow = cursor.fetchone()
+            if not targetRow:
+                raise HTTPException(status_code=404, detail=f"Target user '{data.targetUsername}' not found!")
+            resolvedTargetUid = targetRow['uid']
+        resolvedCid: int | None = None
+        if data.categoryName:
+            cursor.execute('SELECT cid FROM categories WHERE name = ?', (data.categoryName,))
+            catRow = cursor.fetchone()
+            if not catRow:
+                raise HTTPException(status_code=404, detail=f"Category '{data.categoryName}' not found!")
+            resolvedCid = catRow['cid']
+        resolvedLid: int | None = None
+        if data.locationName:
+            cursor.execute('SELECT lid FROM locations WHERE name = ?', (data.locationName,))
+            locRow = cursor.fetchone()
+            if not locRow:
+                raise HTTPException(status_code=404, detail=f"Location '{data.locationName}' not found!")
+            resolvedLid = locRow['lid']
+        deleteFilter: str = '' if user['role'] == 'admin' else ' AND deleted = 0'
+        cursor.execute(f'''
+            SELECT ticketId, submitterUid, assignedUid, status, cid, lid 
+            FROM tickets 
+            WHERE ticketId = ?{deleteFilter}''', (data.ticketId,))
+        ticketRow = cursor.fetchone()
+        if not ticketRow:
+            raise HTTPException(status_code=404, detail="Ticket not found!")
+        elif not (ticketRow['submitterUid'] == data.requestId or ticketRow['assignedUid'] == data.requestId or ticketRow['assignedUid'] == None or user['role'] == 'admin'):
+            raise HTTPException(status_code=403, detail="Access denied!")
+        currentTime: float = time.time()
+        finalCid: int = resolvedCid if resolvedCid is not None else ticketRow['cid']
+        finalLid: int = resolvedLid if resolvedLid is not None else ticketRow['lid']
+        if (ticketRow['submitterUid'] == data.requestId or user['role'] == 'admin'):
+            cursor.execute('''
+                UPDATE tickets 
+                SET title = ?, description = ?, cid = ?, lid = ?, updatedAt = ? 
+                WHERE ticketId = ? AND deleted = 0''', (data.title, data.description, finalCid, finalLid, currentTime, data.ticketId))                
+        if ticketRow['assignedUid'] == data.requestId or ticketRow['assignedUid'] == None and user['role'] == 'staff':
+            cursor.execute('''SELECT ticketId FROM tickets WHERE assignedUid = ? AND status != 'Closed' AND deleted = 0''', (data.requestId,))
+            checkRow = cursor.fetchone()
+            if checkRow and ticketRow['status'] == 'Open' and user['role'] != 'admin':
+                raise HTTPException(status_code=409, detail="Please close your existing ticket before accepting a new ticket!")
+            elif data.status == 'Open' and user['role'] != 'admin':
+                raise HTTPException(status_code=400, detail="Status cannot be empty!")
+            elif ticketRow['status'] == 'Closed' and checkRow and user['role'] != 'admin':
+                raise HTTPException(status_code=400, detail="Please close your existing ticket before changing a ticket!")            
+            cursor.execute('''
+                UPDATE tickets 
+                SET status = ?, assignedUid = ?, updatedAt = ? 
+                WHERE ticketId = ? AND deleted = 0''', (data.status, data.requestId, currentTime, data.ticketId))                
+        if user['role'] == 'admin':
+            if not data.deleted:
+                data.deleted = False
+            newSubmitterUid: int = resolvedTargetUid if resolvedTargetUid is not None else (resolvedSubmitterUid if resolvedSubmitterUid is not None else ticketRow['submitterUid'])
+            finalAssignedUid: int | None = resolvedAssignedUid if resolvedAssignedUid is not None else ticketRow['assignedUid']            
+            cursor.execute('''
+                UPDATE tickets 
+                SET submitterUid = ?, title = ?, description = ?, cid = ?, lid = ?, status = ?, assignedUid = ?, updatedAt = ?, deleted = ? 
+                WHERE ticketId = ?''', (newSubmitterUid, data.title, data.description, finalCid, finalLid, data.status, finalAssignedUid, currentTime, int(data.deleted), data.ticketId))            
+    return {'status': 'success', 'message': "Ticket updated successfully."}
 
-@app.get("/ticket-{id}/comment", status_code=200)
-def GetComments(id:int, username:str) -> list[COMMENT]:
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    cursor.execute("SELECT user FROM tickets WHERE id = ? AND deleted = 0", (id,))
-    ticketRow = cursor.fetchone()
-    if not ticketRow:
-        conn.close()
-        Log(f'{username} ({row[0]}): Tried to view comments on missing Ticket [{id}]')
-        raise HTTPException(status_code=404, detail="Ticket Not Found!")
-    if row[0] == "User" and username != ticketRow[0]:
-        conn.close()
-        Log(f'{username} ({row[0]}): Unauthorized comments view on Ticket [{id}] owned by {ticketRow[0]}!')
-        raise HTTPException(status_code=401, detail="You do not own this ticket!")
-    cursor.execute("SELECT id, ticketID, user, text FROM comments WHERE ticketID = ?", (id,))
-    commentRow = cursor.fetchall()
-    conn.close()
-    comments = [COMMENT(id=r[0], ticketID=r[1], user=r[2], text=r[3]) for r in commentRow]
-    Log(f'{username} ({row[0]}) viewed comments on Ticket [{id}]')
-    return comments    
+class FetchAllTickets(BaseModel):
+    requestId:int
+    allowOpen:str | None = None
+@app.post('/api/tickets', status_code=200)
+def AllTickets(data:FetchAllTickets):
+    user = AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        baseQuery:str = '''
+            SELECT t.ticketId, sub.username AS submitterUid, assign.username AS assignedUid, t.title, t.description, t.status, c.name AS categoryName, l.name AS locationName, (IFNULL(c.priorityScore, 0) + IFNULL(l.priorityScore, 0)) AS priorityScore, t.createdAt, t.updatedAt 
+            FROM tickets t LEFT JOIN categories c ON t.cid = c.cid LEFT JOIN locations l ON t.lid = l.lid LEFT JOIN users sub ON t.submitterUid = sub.uid LEFT JOIN users assign ON t.assignedUid = assign.uid'''
+        if user['role'] == 'admin':
+            cursor.execute(f'''{baseQuery} ORDER BY t.status ASC, t.ticketId DESC''')
+        elif user['role'] == 'staff' and data.allowOpen:
+            cursor.execute(f'''{baseQuery} WHERE (t.status = 'Open' OR t.assignedUid = ?) AND t.deleted = 0 ORDER BY priorityScore DESC, t.ticketId DESC''', (data.requestId,))
+        else:
+            cursor.execute(f'''{baseQuery} WHERE (t.submitterUid = ? OR t.assignedUid = ?) AND t.deleted = 0 ORDER BY t.status ASC, t.ticketId DESC''', (data.requestId, data.requestId))
+        ticketsList:list = cursor.fetchall()    
+    formattedTickets:list = []
+    for ticketRow in ticketsList:
+        ticket = dict(ticketRow)
+        if ticket['createdAt']:
+            ticket['createdAt'] = datetime.fromtimestamp(ticket['createdAt']).strftime('%d %m %Y | %H:%M:%S')
+        if ticket['updatedAt']:
+            ticket['updatedAt'] = datetime.fromtimestamp(ticket['updatedAt']).strftime('%d %m %Y | %H:%M:%S')
+        formattedTickets.append(ticket)  
+    return formattedTickets
 
-@app.post("/ticket-{id}/comment/create", status_code=201)
-def CreateComment(id:int, username:str, comment: COMMENT):
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    cursor.execute("SELECT user, deleted FROM tickets WHERE id = ?", (id,))
-    ticketRow = cursor.fetchone()
-    if not ticketRow or bool(ticketRow[1]):
-        conn.close()
-        Log(f'{username} ({row[0]}): Tried to comment on missing/deleted Ticket [{id}]')
-        raise HTTPException(status_code=404, detail="Ticket Not Found!")
-    if row[0] == "User" and username != ticketRow[0]:
-        conn.close()
-        Log(f'{username} ({row[0]}): Unauthorized comment attempt on Ticket [{id}] owned by {ticketRow[0]}!')
-        raise HTTPException(status_code=401, detail="You do not own this ticket!")
-    cursor.execute("""INSERT INTO comments (ticketID, user, text) VALUES (?, ?, ?)""", (id, username, comment.text))
-    conn.commit()
-    commentID = cursor.lastrowid
-    conn.close()
-    Log(f'{username} ({row[0]}) added comment [{commentID}] to Ticket [{id}]')
-    return {"detail": f"Comment successfully added to Ticket #{id}."}
-
-@app.get("/categories", response_model=list[CATEGORY], status_code=200)
-def GetCategories(username: str) -> list[CATEGORY]:
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    if row[0] != "Admin":
-        conn.close()
-        raise HTTPException(status_code=401, detail="ONLY Admins are allowed to manage categories.")
-    cursor.execute("SELECT name, description, priority FROM categories")
-    rows = cursor.fetchall()
-    conn.close()
-    categories = [CATEGORY(name=r[0], desc=r[1], priority=r[2]) for r in rows]
-    Log(f"{username} (Admin) viewed all categories.")
-    return categories
-
-@app.post("/categories/create", status_code=201)
-def CreateCategory(category: CATEGORY, username: str):
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    if row[0] !="Admin":
-        conn.close()
-        raise HTTPException(status_code=401, detail="ONLY Admins are allowed to manage categories.")
-    try:
-        cursor.execute(
-            "INSERT INTO categories (name, description, priority) VALUES (?, ?, ?)", 
-            (category.name, category.desc, category.priority))
+class MakeTicket(BaseModel):
+    requestId:int
+    title:str = Field(..., min_length=3, max_length=50)
+    description:str = Field(..., max_length=100)
+    cid:int
+    lid:int
+@app.post('/api/ticket/create', status_code=201)
+def CreateTicket(data:MakeTicket):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        currentTime:float = time.time()
+        cursor.execute('''
+            INSERT INTO tickets (submitterUid, assignedUid, title, description, status, cid, lid, createdAt, updatedAt, deleted) 
+            VALUES (?, NULL, ?, ?, 'Open', ?, ?, ?, ?, 0)''', (data.requestId, data.title, data.description, data.cid, data.lid, currentTime, currentTime))
         conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Category already Exists.")
-    conn.close()
-    Log(f"Admin {username} created category: {category.name}")
-    return {"detail": f"Category '{category.name}' created."}
+    return {'status': 'success', 'message': "Ticket created successfully."}
 
-@app.post("/categories/update", status_code=201)
-def UpdateCategory(username: str, category: CATEGORY):
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    if row[0] != "Admin":
-        conn.close()
-        raise HTTPException(status_code=401, detail="ONLY Admins are allowed to manage categories.")
-    cursor.execute("SELECT name FROM categories WHERE name = ?", (category.name,))
-    if not cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=404, detail="Category does not exist.")
-    cursor.execute(
-        "UPDATE categories SET description = ?, priority = ? WHERE name = ?",
-        (category.desc, category.priority, category.name))
-    conn.commit()
-    conn.close()
-    Log(f"{username} (Admin) updated the category: {category.name}")
-    return{"detail": f"Category '{category.name}' updated."}
+class FetchAllUsers(BaseModel):
+    requestId:int
+@app.post('/api/users', status_code=200)
+def AllUsers(data:FetchAllUsers):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT uid, username, email, role, status, profilePicture 
+            FROM users ORDER BY uid ASC''')
+        usersList:list = cursor.fetchall()
+    return [dict(userRow) for userRow in usersList]
 
-@app.delete("/categories/delete", status_code=200)
-def DeleteCategory(username: str, category: str):
-    conn, cursor = ConnectDB()
-    row = GetUser(username)
-    if row[0] != "Admin":
-        conn.close()
-        raise HTTPException(status_code=401, detail="ONLY Admins are allowed to manage categories.")
-    cursor.execute("SELECT name FROM categories WHERE name = ?", (category,))
-    if not cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=404, detail="Category does not exist.")
-    cursor.execute("DELETE FROM categories WHERE name = ?", (category,))
-    conn.commit()
-    conn.close()
-    Log(f"{username} (Admin) deleted category; {category}")
-    return {"detail": f"Category '{category}' deleted."}
+class FetchOneCategory(BaseModel):
+    requestId:int
+    cid:int
+@app.post('/api/category/view', status_code=200)
+def GetCategory(data:FetchOneCategory):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT cid, name, color, priorityScore, icon 
+            FROM categories 
+            WHERE cid = ?''', (data.cid,))
+        categoryRow = cursor.fetchone()
+        if not categoryRow:
+            raise HTTPException(status_code=404, detail="Category not found!")
+        return dict(categoryRow)
 
-@app.post("/coffee", status_code=418)
-def Coffee():
-    Log(f'Someone Tried to Brew Coffee, from a Teapot!')
-    return {"detail": "I refuse to Brew Coffee, I'ma Teapot!"}
+@app.post('/api/category/delete', status_code=200)
+def DeleteCategory(data:FetchOneCategory):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM categories 
+            WHERE cid = ?''', (data.cid,))
+        conn.commit()
+    return {'status': 'success', 'message': "Category deleted successfully."}
 
-@app.get("/logs", status_code=200)
-def UserLogs(username:str) -> list[str]:
-    row = GetUser(username)
-    if row[0] != "Admin":
-        raise HTTPException(status_code=401, detail="You are not authorized to view this!")
-    return userLogs
+class UpdateCategory:
+    def __init__(self, requestId: int = Form(), cid: int = Form(), name: str = Form(), color: str = Form(..., min_length=3, max_length=7), priorityScore: int = Form(), icon: UploadFile | None = File(None)):
+        self.requestId: int = requestId
+        self.cid: int = cid
+        self.name: str = name
+        self.color: str = color
+        self.priorityScore: int = priorityScore
+        self.icon: UploadFile | None = icon
+@app.post('/api/category/update', status_code=200)
+async def UpdateCategoryRoute(data: UpdateCategory = Depends()):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        if len(data.color) > 7:
+            raise HTTPException(status_code=409, detail="Color hex code is incorrect!")        
+        filePath: str | None = None
+        if data.icon and data.icon.filename:
+            if not str(data.icon.filename).endswith('.svg'):
+                raise HTTPException(status_code=400, detail="Only SVG file types are allowed.")
+            filePath = os.path.join(static, f'{data.name}.svg')
+            with open(filePath, 'wb') as fileHandle:
+                fileHandle.write(await data.icon.read())            
+            cursor.execute('''
+                UPDATE categories 
+                SET name = ?, color = ?, priorityScore = ?, icon = ? 
+                WHERE cid = ?''', (data.name, data.color.upper(), data.priorityScore, filePath, data.cid))
+        else:
+            cursor.execute('''
+                UPDATE categories 
+                SET name = ?, color = ?, priorityScore = ? 
+                WHERE cid = ?''', (data.name, data.color.upper(), data.priorityScore, data.cid))            
+        conn.commit()
+    return {'status': 'success', 'message': "Category updated successfully."}
 
-def Log(message:str):
-    userLogs.append(message)
+class FetchAllCategories(BaseModel):
+    requestId:int
+@app.post('/api/categories', status_code=200)
+def AllCategories(data:FetchAllCategories):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT cid, name, color, priorityScore, icon 
+            FROM categories 
+            ORDER BY name DESC''')
+        categoriesList:list = cursor.fetchall()
+    return [dict(categoryRow) for categoryRow in categoriesList]
 
-def Verify(password:str, hashed:str) -> bool:
-    return hashlib.sha256(password.encode('utf-8')).hexdigest() == hashed
+class MakeCategory:
+    def __init__(self, requestId:int = Form(), name:str = Form(), color:str = Form(..., min_length=3, max_length=7), priorityScore:int = Form(), icon:UploadFile = File()) -> None:
+        self.requestId:int = requestId
+        self.name:str = name
+        self.color:str = color
+        self.priorityScore:int = priorityScore
+        self.icon:UploadFile = icon
+@app.post('/api/category/create', status_code=201)
+async def CreateCategory(data:MakeCategory = Depends()):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        if not str(data.icon.filename).endswith('.svg'):
+            raise HTTPException(status_code=400, detail="Only SVG file types are allowed.")
+        filePath:str = os.path.join(static, f'{data.name}.svg')
+        with open(filePath, 'wb') as fileHandle:
+            fileHandle.write(await data.icon.read())
+        cursor.execute('''
+            INSERT INTO categories (name, color, priorityScore, icon) 
+            VALUES (?, ?, ?, ?)''', (data.name, data.color, data.priorityScore, filePath))
+        conn.commit()
+    return {'status': 'success', 'message': "Category created successfully."}
 
-def ConnectDB():
-    conn = sqlite3.connect(database)
-    cursor = conn.cursor()
-    return conn, cursor
+class FetchAllLocations(BaseModel):
+    requestId:int
+@app.post('/api/locations', status_code=200)
+def AllLocations(data:FetchAllLocations):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT lid, name, priorityScore 
+            FROM locations 
+            ORDER BY lid ASC''')
+        locationsList:list = cursor.fetchall()
+    return [dict(locationRow) for locationRow in locationsList]
 
-def DBConvert(row) -> TICKET:
-    return TICKET(
-        ticketID=row[0],
-        byUser=row[1],
-        title=row[2],
-        desc=row[3],
-        status=row[4],
-        assigned=row[5],
-        isDeleted=bool(row[6])
-    )
+class LogInUser(BaseModel):
+    username:str
+    password:str
+@app.post('/api/login', status_code=200)
+def LogInUserRoute(data:LogInUser):
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT uid, username, password 
+            FROM users 
+            WHERE username = ?''', (data.username,))
+        userRow = cursor.fetchone()
+        if not userRow:
+            raise HTTPException(status_code=401, detail="Username or password is incorrect!")
+        passwordHash:str = hashlib.sha256(data.password.encode()).hexdigest()
+        if passwordHash != userRow['password']:
+            raise HTTPException(status_code=401, detail="Username or password is incorrect!")
+        sessionId:str = GenSid(userRow['uid'], conn)
+        conn.commit()
+    return {'sessionId': sessionId}
 
-def GetUser(user):
-    conn, cursor = ConnectDB()
-    cursor.execute("SELECT role FROM users WHERE username = ?", (user,))
-    row = cursor.fetchone()
-    conn.close()
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail=f"User '{user}' does not exist. Cannot create ticket.")
-    return row
+class SignUpUser(BaseModel):
+    username:str
+    password:str
+    email:str
+@app.post('/api/signup', status_code=200)
+def SignUpUserRoute(data:SignUpUser):
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT username 
+            FROM users 
+            WHERE username = ?''', (data.username,))
+        userRow = cursor.fetchone()
+        if userRow:
+            raise HTTPException(status_code=401, detail="Username has already been taken!")
+        passwordHash:str = hashlib.sha256(data.password.encode()).hexdigest()
+        cursor.execute('''
+            INSERT INTO users (username, password, email, role) 
+            VALUES (?, ?, ?, 'user')''', (data.username, passwordHash, data.email))
+        newUid = cursor.lastrowid
+        if newUid is None:
+            raise HTTPException(status_code=404, detail="Row not Found!")
+        newUid = int(newUid)
+        sessionId:str = GenSid(newUid, conn)
+        conn.commit()
+    return {'sessionId': sessionId}
 
-# Thought of a session idea, Problem anyone sending a API Req can write a Admin...
-# Username, so instead we can give a session id that gets sended and the id... (hash)
-# Will contain their userlogs! Users cant guess others session id since its random.
-# An API Request can extend their session and will be called every 10mins.
+class MakeUser(BaseModel):
+    requestId:int
+    username:str
+    email:str
+    role:str
+    password:str
+@app.post('/api/user/create', status_code=201)
+def CreateUser(data:MakeUser):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT username 
+            FROM users 
+            WHERE username = ?''', (data.username,))
+        userRow = cursor.fetchone()
+        if userRow:
+            raise HTTPException(status_code=400, detail="Username already exists!")
+        passwordHash:str = hashlib.sha256(data.password.encode()).hexdigest()
+        cursor.execute('''
+            INSERT INTO users (username, password, email, role, status) 
+            VALUES (?, ?, ?, ?, 'Active')''', (data.username, passwordHash, data.email, data.role))
+        conn.commit()
+    return {'status': 'success', 'message': "User created successfully."}
+
+class FetchOneUser(BaseModel):
+    requestId:int
+    uid:int
+@app.post('/api/user/view', status_code=200)
+def GetUser(data:FetchOneUser) -> dict[str, Any]:
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT uid, username, email, role, status, profilePicture 
+            FROM users 
+            WHERE uid = ?''', (data.uid,))
+        userRow = cursor.fetchone()
+        return dict(userRow)
+
+class UpdateUserModel(BaseModel):
+    requestId:int
+    uid:int
+    username:str
+    email:str
+    role:str
+    status:str
+    password:str | None = None
+@app.post('/api/user/update', status_code=200)
+def UpdateUserRoute(data:UpdateUserModel):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        if data.password and data.password.strip() != "":
+            passwordHash:str = hashlib.sha256(data.password.encode()).hexdigest()
+            cursor.execute('''
+                UPDATE users 
+                SET username = ?, email = ?, role = ?, status = ?, password = ? 
+                WHERE uid = ?''', (data.username, data.email, data.role, data.status, passwordHash, data.uid))
+        else:
+            cursor.execute('''
+                UPDATE users 
+                SET username = ?, email = ?, role = ?, status = ? 
+                WHERE uid = ?''', (data.username, data.email, data.role, data.status, data.uid))
+        conn.commit()
+    return {'status': 'success', 'message': "User updated successfully."}
+
+@app.post('/api/user/delete', status_code=200)
+def DeleteUserRoute(data:FetchOneUser):
+    AuthCheck(data, ['admin'])
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM users 
+            WHERE uid = ?''', (data.uid,))
+        conn.commit()
+    return {'status': 'success', 'message': "User deleted successfully."}
+
+class Validate(BaseModel):
+    requestId:int
+@app.post('/api/user/validate', status_code=200)
+def ValidateUser(data:Validate):
+    AuthCheck(data)
+    with ConnectDb() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT uid, username, email, role, status, profilePicture 
+            FROM users 
+            WHERE uid = ?''', (data.requestId,))
+        userRow = cursor.fetchone()
+        return dict(userRow)
