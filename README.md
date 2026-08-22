@@ -26,59 +26,60 @@ Node.js and npm <br>
 Git
 
 **1. Clone the repository** <br>
-git clone <br>
-cd SillySealsProject <br>
+```git clone https://github.com/s2400116/SillySealsProject``` <br>
+```cd SillySealsProject``` <br>
 
 **2. Set up backend** <br>
 Create and activate a Python virtual environment from the project root. <br>
 
 Windows PowerShell: <br>
-python -m venv .venv <br>
-.\.venv\Scripts\Activate.ps1 <br>
+```python -m venv .venv``` <br>
+```.\.venv\Scripts\Activate.ps1``` <br>
 
 macOS/Linux: <br>
-python3 -m venv .venv <br>
-source .venv/bin/activate <br>
+```python3 -m venv .venv``` <br>
+```source .venv/bin/activate``` <br>
 
 Install the Python dependencies: <br>
-python -m pip install -r requirements.txt <br>
+```python -m pip install -r requirements.txt``` <br>
 
 **3. Set up frontend** <br>
 Open a second terminal and move into the frontend directory: 
 
-cd frontend <br>
-npm install <br>
+```cd frontend``` <br>
+```npm install``` <br>
 
 ## Initializing Database
 The active FastAPI application automatically creates the SQLite tables it requires when "backend/main.py" starts. No separate database server is required.
 
 Start the backend from the project root so that the SQLite database is created/used in the expected location:
 
-uvicorn backend.main:app --reload
+```cd backend``` <br>
+```uvicorn backend.main:app --reload```
 
 The API will be available at:
 
-http://127.0.0.1:8000
+```http://localhost:8000```
 
 FastAPI's interactive API documentation is available at:
 
-http://127.0.0.1:8000/docs
+```http://localhost:8000/docs```
 
 ## Running Backend and Frontend
 From the project root, with the virtual environment activated:
 
-uvicorn backend.main:app --reload
+```uvicorn backend.main:app --reload```
 
 Keep this terminal running while using the frontend.
 
 In a second terminal:
 
-cd frontend
-npm run dev
+```cd frontend```
+```npm run dev```
 
 Vite will display the local development address in the terminal, normally:
 
-http://localhost:5173
+```http://localhost:5173```
 
 Open that address in a web browser.
 
